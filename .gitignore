@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+
+# Downloaded Zenodo archives
+*.zip
+
+# Large case-study inputs restored from Zenodo
+Hannah/
+Iowa/
+
+# Generated inversion/modeling outputs restored from Zenodo or produced locally
+*_Inversion/
+*_Inversion_*/
+iteration_model/
+inversion_result/
+geology_models/
+observed_data/
+reports/
+topo/
+mesh/
+
+# Large scientific/geospatial artifacts
+*.tif
+*.tiff
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.msh
+*.obs
+
+# Generated report/figure artifacts
+*.pdf
+*.docx
+
+# Keep selected lightweight project files trackable if needed.
+!Hannah_model_metrics_table.csv
+!Figure/
+!Figure/**

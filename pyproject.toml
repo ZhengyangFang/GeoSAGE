@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geosage"
+version = "1.0.2"
+description = "A multi-agent workflow for geological reasoning from joint gravity and magnetic inversion models."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Zhengyang Fang", email = "zhengyfang@uiowa.edu" },
+    { name = "Hang Chen", email = "hchen117@uiowa.edu" },
+]
+keywords = [
+    "geophysics",
+    "joint inversion",
+    "gravity",
+    "magnetics",
+    "geological modeling",
+    "multi-agent systems",
+    "large language models",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "choclo>=0.3.2",
+    "discretize>=0.12.0",
+    "h5py>=3.10",
+    "matplotlib>=3.8",
+    "numpy>=2.0",
+    "openai>=2.0.0",
+    "pandas>=2.0",
+    "pypdf>=4.0",
+    "pyproj>=3.6",
+    "pyvista>=0.43",
+    "rasterio>=1.3",
+    "scikit-learn>=1.4",
+    "scipy>=1.14",
+    "simpeg>=0.25.0",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "cartopy>=0.23",
+    "ipykernel>=6.29",
+    "jupyterlab>=4.0",
+    "nbconvert>=7.16",
+]
+reports = [
+    "PyPDF2>=3.0",
+    "pdfplumber>=0.11",
+]
+dev = [
+    "nbstripout>=0.7",
+    "ruff>=0.8",
+]
+
+[project.urls]
+"Data archive" = "https://doi.org/10.5281/zenodo.19958815"
+"Zenodo record" = "https://zenodo.org/records/19958815"
+
+[tool.setuptools]
+py-modules = [
+    "gravity_mag_joint_inversion",
+    "geo_modeling_workflow",
+    "multi_agent_runner",
+    "notebook_geo_helpers",
+    "runner",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
