@@ -39,7 +39,7 @@ Large files should not be committed to GitHub. The data archive contains `.zip`
 packages with the input data, generated models, figures, and representative outputs.
 Keep these downloaded folders untracked in Git.
 
-Recommended GitHub contents:
+Current GitHub repository contents:
 
 | Path | Purpose |
 |---|---|
@@ -54,7 +54,7 @@ Recommended GitHub contents:
 | `pyproject.toml` | Python project metadata and dependencies. |
 | `LICENSE` | MIT license for original code. |
 
-Recommended Zenodo-only contents:
+Zenodo-only large data and output archives:
 
 | Path or pattern | Reason |
 |---|---|
@@ -309,6 +309,16 @@ keys to GitHub.
 
 This is the fastest end-to-end smoke test because it uses the downloaded
 representative inversion output and reruns only the pseudo-geological modeling step.
+
+After installing the project dependencies and before running the workflow itself,
+you can run the lightweight example check:
+
+```bash
+python examples/quick_test.py
+```
+
+This verifies that the code imports, the example configuration loads, and the
+expected Zenodo data folders are present. It does not run the full inversion.
 
 Create `config_hannah_geology_only.json`:
 

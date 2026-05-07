@@ -1,0 +1,20 @@
+{
+  "project": {
+    "name": "Hannah",
+    "input_dir": "Hannah",
+    "output_dir": "Hannah_Inversion_GPT"
+  },
+  "geology": {
+    "mode": "csv_manual",
+    "unit_defs_csv": "Hannah/Hannah_unit_defs.csv",
+    "unit_groups_csv": "Hannah/Hannah_unit_groups.csv",
+    "context_path": "Hannah/Hannah_geology_context.pdf",
+    "min_voxels": 10,
+    "fill_iterations": 3
+  },
+  "run": {
+    "run_inversion": false,
+    "run_geology_model": true,
+    "make_plots": true
+  }
+}
