@@ -1,6 +1,6 @@
 # GeoSAGE
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19958815.svg)](https://doi.org/10.5281/zenodo.19958815)
+[![Zenodo record](https://zenodo.org/badge/DOI/10.5281/zenodo.22034133.svg)](https://zenodo.org/records/22034133)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 GeoSAGE is a reproducible multi-agent workflow for geological reasoning from joint
@@ -8,13 +8,13 @@ gravity and magnetic inversion models. The project accompanies the manuscript
 **A Multi-Agent Framework for Geological Reasoning From Joint Gravity and Magnetic
 Inversion Models**.
 
-This GitHub repository is intended to contain the source code, notebooks, project
-metadata, and lightweight examples. The large case-study data and representative
-outputs are archived on Zenodo:
+This GitHub repository contains the source code, notebooks, project metadata, and
+lightweight examples. The case-study input data and representative computational
+outputs are archived separately on Zenodo:
 
-- DOI: https://doi.org/10.5281/zenodo.19958815
-- Zenodo record: https://zenodo.org/records/19958815
-- Version: 1.0.2
+- Zenodo record: https://zenodo.org/records/22034133
+- DOI: https://doi.org/10.5281/zenodo.22034133
+- Version: 1.0.3
 
 ## What This Project Does
 
@@ -32,6 +32,28 @@ The workflow can be used in two ways:
   and rerun inversion/modeling scripts.
 - **Result-first inspection:** download the Zenodo representative outputs and run the
   plotting notebooks without repeating the expensive inversion.
+
+## Multi-Agent Design
+
+GeoSAGE uses specialized agents to turn a geological request into an auditable
+interpretation workflow. The agents do not replace the deterministic numerical
+inversion; they propose, document, and review scientifically meaningful workflow
+choices around it.
+
+| Agent | Role |
+|---|---|
+| `ContextAgent` | Translates a natural-language request into an initial workflow configuration. |
+| `DataAgent` | Reviews the study area and gravity/magnetic data settings. |
+| `InversionAgent` | Proposes joint-inversion settings and records the numerical workflow choices. |
+| `GeoAgent` | Configures post-inversion pseudo-geological modeling. |
+| `PetrologyAgent` | Proposes unit names and geological grouping when an LLM-assisted grouping mode is selected. |
+| `ReportAgent` | Produces an interpretation from structured numerical evidence. |
+| `ReviewAgent` | Audits the report against the available evidence and requests revisions when needed. |
+
+The gravity-magnetic inversion and model construction remain deterministic Python
+workflows. Each multi-agent run writes an effective configuration, numerical and
+source manifests, an evidence bundle, and a redacted `agent_trace.json` so that the
+reasoning path can be inspected without exposing API credentials.
 
 ## Repository And Data Policy
 
@@ -62,23 +84,24 @@ Zenodo-only large data and output archives:
 | `iteration_model/` | Iteration snapshots from inversion runs. |
 | `reports/*.pdf` | Generated report artifacts. |
 
-## Zenodo Archive Contents
+## Zenodo Input And Output Archive
 
-The Zenodo record contains both data archives and a snapshot of the code release.
-When using GitHub as the code source, the most important files to download from
-Zenodo are the case-study folders and representative output folders.
+GitHub is the authoritative source for code and notebooks. The [Zenodo v1.0.3
+record](https://zenodo.org/records/22034133) is the authoritative archive for the
+case-study inputs and representative outputs discussed in the manuscript. Download
+only the archives needed for the workflow you plan to run.
 
 | Archive | Purpose | Size |
 |---|---:|---:|
-| `Hannah.zip` | Hannah input data and supporting files. | 370.9 MiB |
-| `Iowa.zip` | Iowa input data and supporting files. | 277.0 MiB |
-| `Hannah_Inversion_GPT.zip` | Hannah representative GPT output. | 131.7 MiB |
-| `Hannah_Inversion_GPT_auto_group.zip` | Hannah GPT output with automatic grouping. | 112.0 MiB |
-| `Hannah_Inversion_claude.zip` | Hannah representative Claude output. | 91.1 MiB |
-| `Hannah_Inversion_gemini.zip` | Hannah representative Gemini output. | 105.7 MiB |
-| `Hannah_Inversion_Qwen.zip` | Hannah representative Qwen output. | 81.0 MiB |
-| `Iowa_Inversion_GPT.zip` | Iowa representative GPT output. | 327.2 MiB |
-| `Figure.zip` | Publication and supplementary figures. | 45.2 MiB |
+| `Hannah.zip` | Hannah case-study input data and supporting files. | 324.6 MiB |
+| `Iowa.zip` | Iowa case-study input data and supporting files. | 277.0 MiB |
+| `Hannah_Inversion_GPT.zip` | Hannah representative GPT result. | 131.7 MiB |
+| `Hannah_Inversion_GPT_auto_group.zip` | Hannah GPT result with autonomous grouping. | 112.0 MiB |
+| `Hannah_Inversion_claude.zip` | Hannah representative Claude result. | 91.1 MiB |
+| `Hannah_Inversion_gemini.zip` | Hannah representative Gemini result. | 105.7 MiB |
+| `Hannah_Inversion_Qwen.zip` | Hannah representative Qwen result. | 81.0 MiB |
+| `Hannah_Inversion_GLM.zip` | Hannah representative GLM result. | 54.1 MiB |
+| `Iowa_Inversion_GPT.zip` | Iowa representative GPT result. | 327.2 MiB |
 
 ## Installation
 
@@ -149,7 +172,7 @@ Download only the input folders:
 ```powershell
 $files = @("Hannah.zip", "Iowa.zip")
 foreach ($file in $files) {
-    $url = "https://zenodo.org/api/records/19958815/files/$file/content"
+    $url = "https://zenodo.org/api/records/22034133/files/$file/content"
     Invoke-WebRequest -Uri $url -OutFile $file
     Expand-Archive -Path $file -DestinationPath . -Force
 }
@@ -159,7 +182,7 @@ Linux/macOS:
 
 ```bash
 for file in Hannah.zip Iowa.zip; do
-  curl -L -o "$file" "https://zenodo.org/api/records/19958815/files/${file}/content"
+  curl -L -o "$file" "https://zenodo.org/api/records/22034133/files/${file}/content"
   unzip -o "$file"
 done
 ```
@@ -180,12 +203,12 @@ $files = @(
     "Hannah_Inversion_claude.zip",
     "Hannah_Inversion_gemini.zip",
     "Hannah_Inversion_Qwen.zip",
+    "Hannah_Inversion_GLM.zip",
     "Iowa_Inversion_GPT.zip",
-    "Figure.zip"
 )
 
 foreach ($file in $files) {
-    $url = "https://zenodo.org/api/records/19958815/files/$file/content"
+    $url = "https://zenodo.org/api/records/22034133/files/$file/content"
     Invoke-WebRequest -Uri $url -OutFile $file
     Expand-Archive -Path $file -DestinationPath . -Force
 }
@@ -202,10 +225,10 @@ for file in \
   Hannah_Inversion_claude.zip \
   Hannah_Inversion_gemini.zip \
   Hannah_Inversion_Qwen.zip \
-  Iowa_Inversion_GPT.zip \
-  Figure.zip
+  Hannah_Inversion_GLM.zip \
+  Iowa_Inversion_GPT.zip
 do
-  curl -L -o "$file" "https://zenodo.org/api/records/19958815/files/${file}/content"
+  curl -L -o "$file" "https://zenodo.org/api/records/22034133/files/${file}/content"
   unzip -o "$file"
 done
 ```
@@ -244,6 +267,7 @@ GeoSAGE/
   Hannah_Inversion_claude/
   Hannah_Inversion_gemini/
   Hannah_Inversion_Qwen/
+  Hannah_Inversion_GLM/
   Iowa_Inversion_GPT/
 ```
 
@@ -716,9 +740,9 @@ must be removed from history before pushing.
 If you use GeoSAGE, please cite the associated manuscript and the Zenodo release:
 
 ```text
-Fang, Zhengyang, and Chen, Hang. 2026. GeoSAGE: A Multi-Agent Framework for
+Fang, Zhengyang, and Chen, Hang. 2026. GeoSAGE: A Multi-Agent Workflow for
 Geological Reasoning From Joint Gravity and Magnetic Inversion Models.
-Zenodo. https://doi.org/10.5281/zenodo.19958815
+Zenodo, version 1.0.3. https://doi.org/10.5281/zenodo.22034133
 ```
 
 Please also cite the original data and case-study sources where applicable:
