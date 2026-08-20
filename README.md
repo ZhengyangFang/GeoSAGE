@@ -48,9 +48,7 @@ Current GitHub repository contents:
 | `runner.py` | JSON-driven deterministic workflow runner. |
 | `multi_agent_runner.py` | Natural-language multi-agent workflow and report generation. |
 | `notebook_geo_helpers.py` | Shared helper functions used by plotting notebooks. |
-| `*.ipynb` | Reproduction, plotting, comparison, and metric notebooks. |
-| `Hannah_model_metrics_table.csv` | Lightweight summary table. |
-| `Figure/` | Optional selected publication figures. |
+| Selected `*.ipynb` | Hannah/Iowa workflow examples plus reproducible plotting and quality-assessment notebooks. |
 | `pyproject.toml` | Python project metadata and dependencies. |
 | `LICENSE` | MIT license for original code. |
 
@@ -247,7 +245,6 @@ GeoSAGE/
   Hannah_Inversion_gemini/
   Hannah_Inversion_Qwen/
   Iowa_Inversion_GPT/
-  Figure/
 ```
 
 ## Configure LLM Access
@@ -581,7 +578,6 @@ Then run one of:
 | Notebook | Purpose |
 |---|---|
 | `1_1_language_driven_multi_agents_Hannah.ipynb` | Hannah multi-agent workflow with manual grouping. |
-| `1_2_language_driven_multi_agents_Hannah_auto_group.ipynb` | Hannah multi-agent workflow with automatic grouping. |
 | `1_3_language_driven_multi_agents_Iowa.ipynb` | Iowa multi-agent workflow. |
 
 Before running these notebooks, set `API_BASE` and `MODEL_NAME` in the first configuration cell,
@@ -603,11 +599,14 @@ Suggested notebook order:
 | 1 | `2_plot_Study_Area_data.ipynb` | Study-area data maps and observed gravity/magnetic figures. |
 | 2 | `3_1_plot_Hannah_result.ipynb` | Hannah model slices and 3D visualization. |
 | 3 | `3_2_plot_Iowa_result.ipynb` | Iowa model slices and 3D visualization. |
-| 4 | `4_plot_Hannah_result_discussion.ipynb` | Hannah comparison and discussion figures. |
-| 5 | `5_extract_Hannah_model_metrics.ipynb` | Model metrics table. |
+| 4 | `4_1_datafit_assessment.ipynb` | Hannah/Iowa gravity-magnetic data-fit assessment. |
+| 5 | `4_2_senstivity_presentation.ipynb` | Hannah/Iowa joint sensitivity presentation. |
+| 6 | `4_3_datamisfit_status.ipynb` | Archived joint-inversion data-misfit status. |
+| 7 | `4_4_Hannah_well_validation.ipynb` | Hannah well validation. |
 
 Generated figures are written to `Figure/` or to the relevant inversion output
-folder, depending on the notebook.
+folder, depending on the notebook. These local results are ignored by Git and are
+not included in this repository.
 
 ## Main Input File Conventions
 
