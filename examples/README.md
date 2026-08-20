@@ -21,5 +21,5 @@ It does not run the full gravity-magnetic inversion.
 
 `config_hannah_geology_only.json` is a minimal configuration for rebuilding the
 Hannah pseudo-geological model from the archived `Hannah_Inversion_GPT` output.
-Download the data from https://doi.org/10.5281/zenodo.19958815 before running the
+Download the data from https://doi.org/10.5281/zenodo.22034133 before running the
 full workflow.
