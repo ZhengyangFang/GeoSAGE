@@ -579,7 +579,7 @@ Then run one of:
 |---|---|
 | `1_1_language_driven_multi_agents_Hannah.ipynb` | Hannah multi-agent workflow with manual grouping. |
 | `1_3_language_driven_multi_agents_Iowa.ipynb` | Iowa multi-agent workflow. |
-| `5_2_comparison_interpretation_LLM.ipynb` | Compare interpretations of the archived Hannah GPT result across multiple LLM providers; provider keys are read only from environment variables. |
+| `5_2_comparison_interpretation_LLM.ipynb` | Compare interpretations of the archived Hannah GPT result across multiple LLM providers; credentials are requested interactively at run time and never saved. |
 
 Before running these notebooks, set `API_BASE` and `MODEL_NAME` in the first configuration cell,
 and set `OPENAI_API_KEY` (or the provider-specific environment variable) in the shell. Notebook
