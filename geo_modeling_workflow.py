@@ -29,6 +29,8 @@ def build_geology_model(
     unit_defs_csv: str | Path | None = None,
     unit_groups_csv: str | Path | None = None,
     unit_id_npy: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    make_plots: bool = True,
 ) -> dict:
     """
     Build pseudo-geological unit/group models from inversion results.
@@ -41,7 +43,8 @@ def build_geology_model(
         Directory containing ``*_unit_defs.csv`` and ``*_unit_groups.csv``.
         Defaults to ``Path(project_name)``.
     inversion_dir : Path or str, optional
-        Inversion output directory. Defaults to ``Path(f"{project_name}_Inversion")``.
+        Read-only inversion output directory. Defaults to
+        ``Path(f"{project_name}_Inversion")``.
     min_voxels : int
         Minimum connected-component size kept during geo-group cleanup.
     fill_iterations : int
@@ -52,6 +55,13 @@ def build_geology_model(
         Optional path to unit-to-group mapping CSV.
     unit_id_npy : Path or str, optional
         Optional precomputed unit-id volume. If provided, it is used directly.
+    output_dir : Path or str, optional
+        Interpretation output directory. New geology files are written below
+        ``output_dir/geology_models``. If omitted, the historical behavior of
+        writing below ``inversion_dir`` is retained.
+    make_plots : bool
+        Retained for workflow compatibility. Plot generation remains enabled
+        for existing callers; lightweight test callers may set this to false.
 
     Returns
     -------
@@ -60,6 +70,9 @@ def build_geology_model(
     """
     input_dir = Path(input_dir) if input_dir is not None else Path(project_name)
     inversion_dir = Path(inversion_dir) if inversion_dir is not None else Path(f"{project_name}_Inversion")
+    inversion_dir = inversion_dir.expanduser().resolve()
+    output_dir = Path(output_dir) if output_dir is not None else inversion_dir
+    output_dir = output_dir.expanduser().resolve()
 
     # Resolve input/output paths.
     input_unit = Path(unit_defs_csv) if unit_defs_csv is not None else input_dir / f"{project_name}_unit_defs.csv"
@@ -73,7 +86,7 @@ def build_geology_model(
     dens_core_path = out_res_dir / "joint_density_core.npy"
     susc_core_path = out_res_dir / "joint_susceptibility_core.npy"
 
-    out_geo_dir = inversion_dir / "geology_models"
+    out_geo_dir = output_dir / "geology_models"
     out_geo_dir.mkdir(parents=True, exist_ok=True)
 
     out_geo_slices = out_geo_dir / "slices_and_sections"
@@ -324,6 +337,51 @@ def build_geology_model(
 
     geo_id_3d = geo_id_filled
 
+    # A no-plot path is useful for automated tests and cheap comparison runs.
+    # It still writes the deterministic label arrays and definitions, but does
+    # not invoke Matplotlib or PyVista.
+    if not make_plots:
+        out_unit_id_3d_npy = out_geo_dir / "unit_id_3d.npy"
+        out_geo_id_3d_npy = out_geo_dir / "geo_id_3d.npy"
+        out_geo_defs_json = out_geo_dir / "geo_defs.json"
+        np.save(out_unit_id_3d_npy, unit_id_3d.astype(np.int16, copy=False))
+        np.save(out_geo_id_3d_npy, geo_id_3d.astype(np.int16, copy=False))
+        out_geo_defs_json.write_text(
+            json.dumps({str(int(k)): str(v) for k, v in geo_defs.items()}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "mesh_core": mesh_core,
+            "dens_core_3d": dens_core_3d,
+            "susc_core_3d": susc_core_3d,
+            "unit_id_3d": unit_id_3d,
+            "geo_id_3d": geo_id_3d,
+            "paths": {
+                "source_inversion_dir": str(inversion_dir),
+                "interpretation_output_dir": str(output_dir),
+                "output_root": str(output_dir),
+                "geology_models_dir": str(out_geo_dir),
+                "mesh_core_ubc": str(msh_core_UBC_path),
+                "dens_core_npy": str(dens_core_path),
+                "susc_core_npy": str(susc_core_path),
+                "unit_id_3d_npy": str(out_unit_id_3d_npy),
+                "geo_id_3d_npy": str(out_geo_id_3d_npy),
+                "geo_defs_json": str(out_geo_defs_json),
+                "unit_defs_csv": str(input_unit),
+                "unit_groups_csv": str(input_unit_groups),
+                "unit_id_npy": str(input_unit_id) if input_unit_id is not None else "",
+                "geo_slices_dir": str(out_geo_slices),
+                "geo_geo_id_pngs": [],
+                "geo_combo_slice_pngs": [],
+                "geo_combo_section_pngs": [],
+                "geo_3d_png": "",
+            },
+            "geo_defs": geo_defs,
+            "unit_defs": unit_defs,
+            "source_inversion_dir": str(inversion_dir),
+            "interpretation_output_dir": str(output_dir),
+        }
+
     # 6) Render 3D geology figures with PyVista.
     def setup_bounds(p, grid, font_size=7):
         actor = p.show_bounds(
@@ -573,6 +631,10 @@ def build_geology_model(
     print("Saved geo_defs:", out_geo_defs_json)
 
     paths = {
+        "source_inversion_dir": str(inversion_dir),
+        "interpretation_output_dir": str(output_dir),
+        "output_root": str(output_dir),
+        "geology_models_dir": str(out_geo_dir),
         "mesh_core_ubc": str(msh_core_UBC_path),
         "dens_core_npy": str(dens_core_path),
         "susc_core_npy": str(susc_core_path),
@@ -599,4 +661,6 @@ def build_geology_model(
         "paths": paths,
         "geo_defs": geo_defs,
         "unit_defs": unit_defs,
+        "source_inversion_dir": str(inversion_dir),
+        "interpretation_output_dir": str(output_dir),
     }

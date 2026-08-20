@@ -12,11 +12,14 @@ import subprocess
 import numpy as np
 
 from openai import OpenAI
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
-from runner import DEFAULT_CONFIG, deep_update, run_workflow
+from runner import DEFAULT_CONFIG, deep_update, load_config, run_workflow, resolve_execution_mode
 from geo_modeling_workflow import build_geology_model
+from existing_results import load_existing_geology_result
+from evidence_bundle import build_evidence_bundle, save_evidence_bundle
 
 
 # =============================================================================
@@ -67,6 +70,218 @@ def read_geology_context(context_path: Path) -> str:
     if suffix == ".pdf":
         return _read_pdf_text(resolved_path)
     return resolved_path.read_text(encoding="utf-8")
+
+
+def _stage_report_figures(report_path: Path, output_dir: Path) -> List[Path]:
+    """Copy Markdown-referenced result figures beside a report before export."""
+    report_text = report_path.read_text(encoding="utf-8")
+    report_dir = report_path.parent
+    staged: List[Path] = []
+    references = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", report_text)
+    for reference in references:
+        if "://" in reference or reference.startswith("data:"):
+            continue
+        relative_path = Path(reference.replace("\\", "/"))
+        destination = report_dir / relative_path
+        if destination.is_file():
+            continue
+        candidates = [output_dir / relative_path]
+        candidates.extend(
+            path for path in output_dir.rglob(relative_path.name)
+            if report_dir not in path.parents
+        )
+        source = next((path for path in candidates if path.is_file()), None)
+        if source is None:
+            print(f"[WARN] Report figure not found; leaving reference unchanged: {reference}")
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        staged.append(destination)
+    return staged
+
+
+def _prepare_report_figure_inventory(
+    fig_paths: Dict[str, Any],
+    report_dir: Path,
+) -> Tuple[Dict[str, Any], set[str]]:
+    """Copy existing figures into the report folder and return allowed Markdown paths."""
+
+    figure_dir = report_dir / "figures"
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    source_to_reference: Dict[str, str] = {}
+    used_names: Dict[str, str] = {}
+
+    def stage(raw_path: Any) -> str:
+        if not raw_path:
+            return ""
+        source = Path(str(raw_path)).expanduser().resolve()
+        if not source.is_file():
+            return ""
+        source_key = str(source)
+        if source_key in source_to_reference:
+            return source_to_reference[source_key]
+
+        candidate = source.name
+        existing_source = used_names.get(candidate)
+        if existing_source is not None and existing_source != source_key:
+            candidate = f"{source.stem}_{len(used_names) + 1}{source.suffix}"
+        destination = figure_dir / candidate
+        shutil.copy2(source, destination)
+        reference = f"figures/{candidate}"
+        used_names[candidate] = source_key
+        source_to_reference[source_key] = reference
+        return reference
+
+    inventory: Dict[str, Any] = {}
+    for key, value in fig_paths.items():
+        if isinstance(value, list):
+            inventory[key] = [reference for item in value if (reference := stage(item))]
+        else:
+            inventory[key] = stage(value)
+    return inventory, set(source_to_reference.values())
+
+
+def _sanitize_report_image_references(
+    report_text: str,
+    report_dir: Path,
+    allowed_references: set[str],
+) -> Tuple[str, List[str]]:
+    """Remove Markdown images that are absent or outside the supplied figure inventory."""
+
+    removed: List[str] = []
+    pattern = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+
+    def replace(match: re.Match[str]) -> str:
+        reference = match.group(1).strip().replace("\\", "/")
+        local_path = report_dir / Path(reference)
+        if reference in allowed_references and local_path.is_file():
+            return match.group(0)
+        removed.append(reference)
+        return ""
+
+    sanitized = pattern.sub(replace, report_text)
+    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized).strip() + "\n"
+    return sanitized, removed
+
+
+def _sanitize_report_windows_paths(report_text: str) -> str:
+    """Protect bare Windows paths from being interpreted as LaTeX commands.
+
+    LLM reports occasionally print provenance paths such as ``D:\\project\\run``
+    as plain Markdown.  Pandoc passes the backslashes through in a way that can
+    make XeLaTeX treat sequences such as ``\\Iowa`` as undefined commands.
+    Inline-code formatting preserves the provenance text and makes PDF export
+    deterministic.
+    """
+
+    path_at_line_end = re.compile(
+        r"(?<!`)\b[A-Za-z]:\\[^`\r\n]*?(?=(?: {2,})?$)",
+        flags=re.MULTILINE,
+    )
+    return path_at_line_end.sub(lambda match: f"`{match.group(0).rstrip()}`", report_text)
+
+
+def _append_standard_report_figures(report_text: str, fig_paths: Dict[str, Any]) -> str:
+    """Append a fixed common figure set so cross-LLM reports remain comparable."""
+
+    candidates: List[Tuple[str, str]] = []
+
+    def add(title: str, reference: Any) -> None:
+        if isinstance(reference, str) and reference:
+            candidates.append((title, reference))
+
+    add("Density-susceptibility classification", fig_paths.get("scatter_rho_kappa"))
+    add("Archived pseudo-geological model", fig_paths.get("geo_3d"))
+    geo_figures = fig_paths.get("geo_geo_id_pngs", [])
+    if isinstance(geo_figures, list):
+        for target_id in (4, 5):
+            match = next(
+                (path for path in geo_figures if Path(str(path)).stem == f"geo_id_{target_id}"),
+                "",
+            )
+            add(f"Target Geo {target_id}", match)
+    sections = fig_paths.get("combo_section_list", [])
+    if isinstance(sections, list) and sections:
+        add("Representative central XZ section", sections[len(sections) // 2])
+
+    existing = {
+        match.group(1).strip().replace("\\", "/")
+        for match in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", report_text)
+    }
+    blocks = [
+        f"### {title}\n\n![]({reference})"
+        for title, reference in candidates
+        if reference not in existing
+    ]
+    if not blocks:
+        return report_text
+    return report_text.rstrip() + "\n\n## Selected Supporting Figures\n\n" + "\n\n".join(blocks) + "\n"
+
+
+def export_markdown_report_pdf(report_path: Path, output_dir: Path) -> Optional[Path]:
+    """Export an existing Markdown report to PDF without rerunning the workflow."""
+    report_path = report_path.resolve()
+    output_dir = output_dir.resolve()
+    _stage_report_figures(report_path, output_dir)
+    pdf_path = report_path.with_suffix(".pdf")
+    pandoc_workdir = report_path.parent
+    command_base = ["pandoc", report_path.name, "-o", pdf_path.name]
+
+    env = os.environ.copy()
+    extra_paths: List[Path] = []
+    if os.name == "nt":
+        extra_paths.extend(
+            [
+                Path.home() / "AppData" / "Local" / "Programs" / "MiKTeX" / "miktex" / "bin" / "x64",
+                Path.home() / "AppData" / "Local" / "Programs" / "MiKTeX" / "miktex" / "bin",
+                Path("C:/Program Files/Pandoc"),
+            ]
+        )
+        winget_root = Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
+        if winget_root.exists():
+            extra_paths.extend(path.parent for path in winget_root.glob("JohnMacFarlane.Pandoc_*/*/pandoc.exe"))
+    existing_path = env.get("PATH", "")
+    prepend = [str(path) for path in extra_paths if path.exists()]
+    if prepend:
+        env["PATH"] = os.pathsep.join(prepend + [existing_path])
+
+    if not shutil.which("pandoc", path=env.get("PATH")):
+        print(f"[WARN] Pandoc was not found; Markdown report retained at: {report_path}")
+        return None
+
+    engines = ("xelatex", "pdflatex", "lualatex", "tectonic", "wkhtmltopdf", "weasyprint")
+    available_engines = [engine for engine in engines if shutil.which(engine, path=env.get("PATH"))]
+    if not available_engines:
+        print("[WARN] No supported PDF engine found; Markdown report retained at: " f"{report_path}")
+        return None
+
+    errors: List[str] = []
+    for engine in available_engines:
+        font_args: List[str] = []
+        if engine == "xelatex" and os.name == "nt":
+            fonts_dir = Path("C:/Windows/Fonts")
+            if fonts_dir.exists() and any(fonts_dir.glob("times*.tt*")) and any(fonts_dir.glob("cambria*.tt*")):
+                font_args = ["-V", "mainfont=Times New Roman", "-V", "mathfont=Cambria Math"]
+        try:
+            result = subprocess.run(
+                [*command_base, "--pdf-engine", engine, *font_args],
+                check=True,
+                cwd=pandoc_workdir,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            warning_text = (result.stderr or "").strip()
+            if warning_text:
+                print(f"Pandoc warnings ({engine}): {warning_text}")
+            print(f"PDF report saved to: {pdf_path} (engine: {engine})")
+            return pdf_path
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or "").strip().replace("\n", " ")
+            errors.append(f"{engine} (exit {exc.returncode})" + (f": {detail[:400]}" if detail else ""))
+
+    print("[WARN] PDF generation failed with all available engines. " + " | ".join(errors))
+    return None
 
 
 def _read_pdf_text(path: Path) -> str:
@@ -702,6 +917,105 @@ def _cluster_units_from_inversion_gmm(
     }
 
 
+def unit_stats_from_unit_id(
+    inversion_result: Dict[str, Any],
+    unit_id_npy: str | Path,
+) -> List[Dict[str, Any]]:
+    """Compute reusable physical-property statistics for fixed unit labels."""
+
+    paths = inversion_result.get("paths", {})
+    density = inversion_result.get("dens_core_3d")
+    susceptibility = inversion_result.get("susc_core_3d")
+    if density is None:
+        density_path = paths.get("density_core_npy") or paths.get("dens_core_npy")
+        density = np.load(density_path)
+    if susceptibility is None:
+        susceptibility_path = paths.get("susceptibility_core_npy") or paths.get("susc_core_npy")
+        susceptibility = np.load(susceptibility_path)
+    labels = np.load(Path(unit_id_npy))
+    if labels.shape != density.shape or labels.shape != susceptibility.shape:
+        raise ValueError(
+            "Fixed unit labels must have the same shape as inversion arrays: "
+            f"labels={labels.shape}, density={density.shape}, susceptibility={susceptibility.shape}"
+        )
+
+    valid = (labels > 0) & np.isfinite(density) & np.isfinite(susceptibility)
+    z_index = np.broadcast_to(
+        np.arange(labels.shape[2], dtype=float).reshape(1, 1, labels.shape[2]), labels.shape
+    )
+    total = float(np.sum(valid))
+    stats: List[Dict[str, Any]] = []
+    for uid in sorted(int(v) for v in np.unique(labels) if int(v) > 0):
+        mask = valid & (labels == uid)
+        if not np.any(mask):
+            continue
+        dvals = density[mask]
+        svals = susceptibility[mask]
+        zvals = z_index[mask]
+        stats.append(
+            {
+                "unit_id": uid,
+                "name": f"Unit {uid}",
+                "voxel_count": int(np.sum(mask)),
+                "voxel_fraction": float(np.sum(mask)) / total if total else 0.0,
+                "dens_mean": float(np.mean(dvals)),
+                "dens_p10": float(np.percentile(dvals, 10)),
+                "dens_p90": float(np.percentile(dvals, 90)),
+                "susc_mean": float(np.mean(svals)),
+                "susc_p10": float(np.percentile(svals, 10)),
+                "susc_p90": float(np.percentile(svals, 90)),
+                "depth_index_mean": float(np.mean(zvals) / max(1.0, labels.shape[2] - 1)),
+            }
+        )
+    return stats
+
+
+def _unit_rows_from_stats(unit_stats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for stats in unit_stats:
+        rows.append(
+            {
+                "unit_id": int(stats["unit_id"]),
+                "name": str(stats.get("name", f"Unit {stats['unit_id']}")),
+                "dens_min": float(stats.get("dens_p10", stats.get("dens_mean", 0.0))),
+                "dens_max": float(stats.get("dens_p90", stats.get("dens_mean", 0.0)) + 1e-6),
+                "susc_min": float(stats.get("susc_p10", stats.get("susc_mean", 0.0))),
+                "susc_max": float(stats.get("susc_p90", stats.get("susc_mean", 0.0)) + 1e-6),
+            }
+        )
+    return rows
+
+
+def _write_gmm_artifacts(output_dir: Path, cluster_out: Dict[str, Any]) -> Dict[str, str]:
+    """Persist deterministic GMM artifacts below an interpretation directory."""
+
+    geo_dir = output_dir / "geology_models"
+    geo_dir.mkdir(parents=True, exist_ok=True)
+    unit_id_path = Path(cluster_out["unit_id_npy"])
+    if unit_id_path.parent.resolve() != geo_dir.resolve():
+        target = geo_dir / "unit_id_gmm.npy"
+        shutil.copy2(unit_id_path, target)
+        unit_id_path = target
+    defs_path = geo_dir / "unit_defs_gmm.csv"
+    stats_path = geo_dir / "unit_stats.json"
+    bic_path = geo_dir / "bic_scores.json"
+    defs_path.write_text(_unit_defs_rows_to_csv(cluster_out["unit_rows"]), encoding="utf-8")
+    stats_path.write_text(
+        json.dumps(cluster_out["unit_stats"], ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    bic_path.write_text(
+        json.dumps({str(k): float(v) for k, v in cluster_out["bic_scores"].items()}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "unit_id_npy": str(unit_id_path),
+        "unit_defs_csv": str(defs_path),
+        "unit_stats_json": str(stats_path),
+        "bic_scores_json": str(bic_path),
+    }
+
+
 # =============================================================================
 # 0. Lightweight LLM client + ContextAgent (inlined from agents_runner.py)
 # =============================================================================
@@ -900,6 +1214,7 @@ class ContextAgent:
 
     def __init__(self, llm: LLMClient) -> None:
         self.llm = llm
+        self.interactions: List[Dict[str, Any]] = []
 
     def build_config(self, user_request: str) -> Dict[str, Any]:
         """
@@ -936,6 +1251,17 @@ Based on the default configuration, generate a new complete configuration JSON:
 """
 
         cfg_from_llm = self.llm.chat_json(system_prompt, user_prompt)
+        self.interactions.append(
+            _redact_trace_value(
+                {
+                    "operation": "json",
+                    "temperature": 0.0,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "response": cfg_from_llm,
+                }
+            )
+        )
         cfg = json.loads(json.dumps(DEFAULT_CONFIG))
         deep_update(cfg, cfg_from_llm)
         return cfg
@@ -945,15 +1271,55 @@ Based on the default configuration, generate a new complete configuration JSON:
 # 1. BaseLLMAgent
 # =============================================================================
 
+def _redact_trace_value(value: Any) -> Any:
+    """Redact common API-key patterns before persisting agent traces."""
+
+    if isinstance(value, str):
+        return re.sub(
+            r"sk-(?:proj|or-v1)-[A-Za-z0-9_-]+",
+            "[REDACTED_API_KEY]",
+            value,
+        )
+    if isinstance(value, dict):
+        return {str(key): _redact_trace_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_trace_value(item) for item in value]
+    return value
+
+
 @dataclass
 class BaseLLMAgent:
     llm: LLMClient
     name: str
     system_prompt: str
+    interactions: List[Dict[str, Any]] = field(default_factory=list, init=False, repr=False)
+
+    def _record_interaction(
+        self,
+        operation: str,
+        user_prompt: str,
+        response: Any,
+        temperature: float,
+        **metadata: Any,
+    ) -> None:
+        self.interactions.append(
+            _redact_trace_value(
+                {
+                    "operation": operation,
+                    "temperature": temperature,
+                    "system_prompt": self.system_prompt,
+                    "user_prompt": user_prompt,
+                    "response": response,
+                    **metadata,
+                }
+            )
+        )
 
     def ask_json(self, user_prompt: str, temperature: float = 0.0) -> Dict[str, Any]:
         """Return JSON (for LLMClient.chat_json)"""
-        return self.llm.chat_json(self.system_prompt, user_prompt, temperature=temperature)
+        response = self.llm.chat_json(self.system_prompt, user_prompt, temperature=temperature)
+        self._record_interaction("json", user_prompt, response, temperature)
+        return response
 
     def ask_text(self, user_prompt: str, temperature: float = 0.2) -> str:
         """Return free-text output (used for report generation)."""
@@ -968,13 +1334,15 @@ class BaseLLMAgent:
 
         # Handle different response formats
         if isinstance(resp, str):
-            return resp.strip()
+            response = resp.strip()
         elif hasattr(resp, 'choices'):
-            return resp.choices[0].message.content.strip()
+            response = resp.choices[0].message.content.strip()
         elif hasattr(resp, 'content'):
-            return resp.content.strip()
+            response = resp.content.strip()
         else:
             raise ValueError(f"Unexpected response type: {type(resp)}, value: {resp}")
+        self._record_interaction("text", user_prompt, response, temperature)
+        return response
 
     def ask_text_with_images(
         self,
@@ -1022,13 +1390,21 @@ class BaseLLMAgent:
 
         # Handle different response formats
         if isinstance(resp, str):
-            return resp.strip()
+            response = resp.strip()
         elif hasattr(resp, 'choices'):
-            return resp.choices[0].message.content.strip()
+            response = resp.choices[0].message.content.strip()
         elif hasattr(resp, 'content'):
-            return resp.content.strip()
+            response = resp.content.strip()
         else:
             raise ValueError(f"Unexpected response type: {type(resp)}, value: {resp}")
+        self._record_interaction(
+            "text_with_images",
+            user_prompt,
+            response,
+            temperature,
+            image_paths=[str(path) for path in image_paths[:max_images]],
+        )
+        return response
 
 
 # =============================================================================
@@ -1182,6 +1558,12 @@ geology   = {json.dumps(cfg["geology"], ensure_ascii=False, indent=2)}
 [VII. Available Figures (File Paths)]
 {json.dumps(fig_paths, ensure_ascii=False, indent=2)}
 
+Figure-path rules:
+- The paths listed in [VII] are the complete and exclusive figure inventory for this report.
+- Embed a figure only by copying one of those paths exactly into Markdown image syntax.
+- Never invent a filename, subdirectory, target-specific slice, or derived figure path.
+- If [VII] contains no suitable figure, omit the image and describe the numerical evidence instead.
+
 [VIII. Rapid Interpretation of the Visual Model (if available, for reference)]
 {json.dumps(vision_analysis, ensure_ascii=False, indent=2)}
 
@@ -1200,7 +1582,7 @@ Please write a detailed Markdown report in English. The structure should include
 - Describe how the 2D parameter space (density, susceptibility) is partitioned into Units and then merged into Geo groups.
 - Reference the density-susceptibility scatter plot (scatter_rho_kappa) to illustrate the classification scheme.
 - Explain the geological interpretation behind each unit/group (e.g., high-density high-susceptibility = mafic intrusive, low-density low-susceptibility = sedimentary, etc.).
-- If the scatter plot is available in fig_paths, embed it using `![](figures/density_susceptibility_scatter_by_unit.png)`.
+- If the scatter plot is available in fig_paths, embed it using the exact `scatter_rho_kappa` path supplied in [VII].
 
 ## 4. Inversion and Pseudo-Geological Results
 - Describe the overall characteristics of the density and magnetic susceptibility models (e.g., gravity low-anomaly zones, magnetic high belts).
@@ -1208,7 +1590,7 @@ Please write a detailed Markdown report in English. The structure should include
 - Reference relevant figures (combo slices, 3D visualization) to support your description.
 
 ## 5. Target Body Analysis (Key Section)
-- For the geological bodies/body groups corresponding to target_geo_ids,
+- For the geological bodies/body groups corresponding to target_unit_ids and target_geo_ids,
 create a dedicated subsection for each (primary vs. secondary targets must include separate conclusions and priority rankings):
   - Plan-view extent, strike, width, and depth extent.
   - Spatial relationships with faults, volcanic centers, geothermal fields, etc.
@@ -1216,8 +1598,8 @@ create a dedicated subsection for each (primary vs. secondary targets must inclu
   - Mechanism/genesis interpretation (cite descriptions in the Geological Background (from external documents)that are relevant to the above elements as evidence).
 - Evaluate the favorable conditions and unfavorable factors for these bodies as mineral exploration targets.
 - If multiple targets exist (primary and secondary), discuss them separately and provide priority recommendations.
-- Figure citations (required): include 2~3 key figure references in this chapter. If fig_paths is provided, prioritize figures most relevant to the target bodies.
-- When you mention a figure filename, also embed it immediately using Markdown image syntax on the next line, e.g., `![](figures/your_file.png)`.
+- If suitable paths are available in fig_paths, include 2-3 key figure references in this chapter; otherwise omit figure citations.
+- When embedding a figure, use only an exact path from [VII].
 
 ## 6. Uncertainty and Limitations
 - Discuss the impacts of inversion non-uniqueness, data noise, and uncertainties in physical-property contrasts.
@@ -1251,6 +1633,120 @@ Writing requirements:
             )
         else:
             return self.ask_text(user_prompt, temperature=0.3)
+
+    def revise_report(
+        self,
+        draft_report: str,
+        review: Dict[str, Any],
+        evidence_bundle: Dict[str, Any],
+        allowed_figure_paths: Optional[List[str]] = None,
+    ) -> str:
+        """Revise only the claims identified by one deterministic review round."""
+
+        prompt = f"""
+Revise the following technical Markdown report using the review JSON and evidence bundle.
+Preserve valid content. Correct only identified issues, do not invent new numbers or claims,
+and explicitly qualify unresolved interpretations. Return the complete Markdown report only.
+Preserve only image references whose paths occur exactly in ALLOWED FIGURE PATHS. Do not
+invent, rename, or derive any image path. If no suitable allowed path exists, omit the image.
+
+[ALLOWED FIGURE PATHS]
+{json.dumps(allowed_figure_paths or [], ensure_ascii=False, indent=2)}
+
+[DRAFT REPORT]
+{draft_report}
+
+[REVIEW JSON]
+{json.dumps(review, ensure_ascii=False, indent=2)}
+
+[EVIDENCE BUNDLE]
+{json.dumps(evidence_bundle, ensure_ascii=False, indent=2)}
+"""
+        return self.ask_text(prompt, temperature=0.0)
+
+
+class ReviewAgent(BaseLLMAgent):
+    """Audit a draft report against structured numerical evidence."""
+
+    def review_report(
+        self,
+        *,
+        inversion_parameters: Dict[str, Any],
+        source_manifest: Dict[str, Any],
+        result_summary: Dict[str, Any],
+        slice_analysis: Dict[str, Any],
+        coordinate_reference: Dict[str, Any],
+        target_depth_audit: Dict[str, Any],
+        unit_definitions: Any,
+        unit_to_geo: Any,
+        target_ids: Dict[str, Any],
+        geology_context: str,
+        draft_report: str,
+        deterministic_warnings: List[str],
+    ) -> Dict[str, Any]:
+        prompt = f"""
+Audit this draft geological interpretation report against the structured evidence below.
+Return JSON only with exactly this shape:
+{{"decision":"ACCEPT|REVISE_REPORT|INSUFFICIENT_EVIDENCE", "summary":"short explanation", "issues":[{{"claim_id":"C001", "severity":"major|minor", "category":"numeric|unit|coordinate|evidence|overstatement|terminology", "problem":"description", "evidence":"specific evidence ID or field", "required_action":"specific correction"}}]}}
+
+Perform this coordinate/depth audit before all other checks:
+1. Model z is ELEVATION in metres (positive upward), not depth. A physical depth below
+   local ground surface is only `local topographic elevation - z elevation`.
+2. k is an array index only. Never accept a statement that maps k=0, k=n, or a layer order
+   directly to surface, depth, shallow, or deep without using its supplied physical z value.
+3. A target/drilling-depth claim must be supported by E_TARGET_DEPTH_AUDIT, specifically its
+   topography-relative depth statistics. Do not substitute target elevation, mesh z range, or
+   a geological-prior thickness for a depth below surface.
+4. If a claimed depth interval is only a minor part of the target distribution, it cannot be
+   called the principal, greatest, or dominant target without direct supporting statistics.
+5. If the coordinate/depth evidence is unavailable, require removal or explicit qualification
+   of any precise depth or drilling-depth claim.
+
+Flag any violation above as a major `coordinate` issue and require a correction. Then check
+meters versus kilometres, Unit ID versus Geo ID, voxel counts/fractions, unsupported claims,
+overconfident wording, and whether interpret-existing mode was incorrectly described as
+rerunning the inversion.
+
+INVERSION PARAMETERS:
+{json.dumps(inversion_parameters, ensure_ascii=False, indent=2)}
+SOURCE MANIFEST:
+{json.dumps(source_manifest, ensure_ascii=False, indent=2)}
+RESULT SUMMARY:
+{json.dumps(result_summary, ensure_ascii=False, indent=2)}
+SLICE ANALYSIS:
+{json.dumps(slice_analysis, ensure_ascii=False, indent=2)}
+E_COORDINATE_REFERENCE:
+{json.dumps(coordinate_reference, ensure_ascii=False, indent=2)}
+E_TARGET_DEPTH_AUDIT:
+{json.dumps(target_depth_audit, ensure_ascii=False, indent=2)}
+UNIT DEFINITIONS:
+{json.dumps(unit_definitions, ensure_ascii=False, indent=2)}
+UNIT TO GEO:
+{json.dumps(unit_to_geo, ensure_ascii=False, indent=2)}
+TARGET IDS:
+{json.dumps(target_ids, ensure_ascii=False, indent=2)}
+GEOLOGICAL CONTEXT:
+{geology_context}
+DETERMINISTIC WARNINGS:
+{json.dumps(deterministic_warnings, ensure_ascii=False, indent=2)}
+DRAFT REPORT:
+{draft_report}
+"""
+        result = self.ask_json(prompt, temperature=0.0)
+        decision = str(result.get("decision", "REVISE_REPORT")).upper()
+        if decision not in {"ACCEPT", "REVISE_REPORT", "INSUFFICIENT_EVIDENCE"}:
+            decision = "REVISE_REPORT"
+        issues = result.get("issues", [])
+        if not isinstance(issues, list):
+            issues = []
+        return {
+            "decision": decision,
+            "summary": str(result.get("summary", "")),
+            "issues": issues,
+        }
+
+    # Short alias for callers that use the role name as the operation.
+    review = review_report
 
 
 # =============================================================================
@@ -1499,6 +1995,68 @@ def describe_images_with_vision(fig_paths: Dict[str, Any], vision_client: Vision
 
     return outputs
 
+
+def resolve_target_identifiers(
+    geology_config: Dict[str, Any],
+    geology_result: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Separate Unit IDs from Geo IDs and handle the historical Hannah typo."""
+
+    geo_defs = geology_result.get("geo_defs", {}) if geology_result else {}
+    unit_defs = geology_result.get("unit_defs", {}) if geology_result else {}
+    valid_geo = {int(key) for key in geo_defs}
+    valid_unit = {int(key) for key in unit_defs}
+    target_units = {int(v) for v in geology_config.get("target_unit_ids", [])}
+    target_geos = {int(v) for v in geology_config.get("target_geo_ids", [])}
+
+    legacy_units = sorted((target_geos - valid_geo) & valid_unit)
+    if legacy_units:
+        import warnings
+
+        warnings.warn(
+            "target_geo_ids contains IDs that are Unit IDs in the loaded model: "
+            f"{legacy_units}. Treating them as legacy target_unit_ids.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        target_geos -= set(legacy_units)
+        target_units.update(legacy_units)
+    unknown_geo = sorted(target_geos - valid_geo) if valid_geo else []
+    if unknown_geo:
+        import warnings
+
+        warnings.warn(
+            f"target_geo_ids are not present in geo_defs: {unknown_geo}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    unknown_unit = sorted(target_units - valid_unit) if valid_unit else []
+    if unknown_unit:
+        import warnings
+
+        warnings.warn(
+            f"target_unit_ids are not present in unit_defs: {unknown_unit}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    return {
+        "target_unit_ids": sorted(target_units),
+        "target_geo_ids": sorted(target_geos),
+        "legacy_unit_ids": legacy_units,
+        "unknown_unit_ids": unknown_unit,
+        "unknown_geo_ids": unknown_geo,
+    }
+
+
+def _one_to_one_groups_csv(unit_stats: List[Dict[str, Any]]) -> str:
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(["unit_id", "geo_id", "geo_name"])
+    for stats in sorted(unit_stats, key=lambda item: int(item["unit_id"])):
+        uid = int(stats["unit_id"])
+        writer.writerow([uid, uid, f"Unit {uid}"])
+    return out.getvalue()
+
 @dataclass
 class PetrologyAgent(BaseLLMAgent):
     """
@@ -1681,7 +2239,16 @@ class MultiAgentOrchestrator:
         images_per_list : int, default 10
             Maximum number of images to take from each figure list (slices, sections, etc.).
         """
-        self.llm = llm or LLMClient()
+        if llm is not None:
+            self.llm = llm
+        else:
+            try:
+                self.llm = LLMClient()
+            except ValueError as exc:
+                # Deterministic config modes such as gmm_only and
+                # reuse_existing_geology do not require an LLM.
+                print(f"[INFO] LLM client not configured; deterministic modes remain available. {exc}")
+                self.llm = None
         self.vision_client = vision_client or VisionClient()
         self.enable_vision = enable_vision
         self.use_llm_vision = use_llm_vision
@@ -1725,8 +2292,533 @@ class MultiAgentOrchestrator:
                 "You are an expert in geophysics and structural geology, skilled at writing professional technical reports based on inversion and geological modeling results."
             ),
         )
+        self.review_agent = ReviewAgent(
+            llm=self.llm,
+            name="ReviewAgent",
+            system_prompt=(
+                "You are the ReviewAgent. Audit geological reports against structured numerical evidence. "
+                "Return JSON only and identify unsupported or overconfident claims precisely."
+            ),
+        )
+
+    def _prepare_configured_geology(
+        self,
+        cfg: Dict[str, Any],
+        workflow_result: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Build one interpretation in a destination separate from the source."""
+
+        run_cfg = cfg["run"]
+        if not run_cfg.get("run_geology_model", True):
+            return None
+        inversion_result = workflow_result.get("inversion_result")
+        if inversion_result is None:
+            raise RuntimeError("Geological interpretation requires an inversion result.")
+        source_dir = Path(inversion_result["paths"]["output_root"])
+        output_dir = Path(workflow_result["interpretation_output_dir"])
+        geo_cfg = cfg["geology"]
+        mode = str(geo_cfg.get("mode", "csv_manual")).strip().lower()
+        if run_cfg.get("reuse_existing_geology", False):
+            mode = "reuse_existing_geology"
+
+        if mode == "reuse_existing_geology":
+            reused = load_existing_geology_result(source_dir, inversion_result)
+            unit_defs_path = geo_cfg.get("unit_defs_csv")
+            if unit_defs_path and Path(str(unit_defs_path)).is_file():
+                rows = _read_unit_defs_rows(Path(str(unit_defs_path)))
+                reused["unit_defs"] = {int(row["unit_id"]): row for row in rows}
+            return reused
+
+        gmm_modes = {"gmm_bic_auto", "gmm_only"}
+        fixed_modes = {"fixed_units_llm_groups", "fixed_units_fixed_groups"}
+        unit_stats: List[Dict[str, Any]] = []
+        unit_id_path: Optional[Path] = None
+        generated_cluster: Optional[Dict[str, Any]] = None
+
+        if mode in gmm_modes or mode in fixed_modes:
+            requested_unit_path = geo_cfg.get("unit_id_npy")
+            if requested_unit_path:
+                candidates = [Path(str(requested_unit_path))]
+                raw = Path(str(requested_unit_path))
+                if not raw.is_absolute():
+                    candidates.extend([source_dir / raw, output_dir / raw])
+                unit_id_path = _first_existing_path(candidates)
+                if unit_id_path is None:
+                    raise FileNotFoundError(
+                        f"Configured unit_id_npy was not found: {requested_unit_path}"
+                    )
+
+            if unit_id_path is None and mode in gmm_modes:
+                unit_id_path = output_dir / "geology_models" / "unit_id_gmm.npy"
+                generated_cluster = _cluster_units_from_inversion_gmm(
+                    inversion_result=inversion_result,
+                    unit_id_npy_path=unit_id_path,
+                    k_min=6,
+                    k_max=10,
+                    random_state=42,
+                )
+                _write_gmm_artifacts(output_dir, generated_cluster)
+                unit_stats = generated_cluster["unit_stats"]
+                unit_rows = generated_cluster["unit_rows"]
+            else:
+                if unit_id_path is None:
+                    raise ValueError(f"geology.mode={mode} requires unit_id_npy or GMM generation")
+                unit_stats = unit_stats_from_unit_id(inversion_result, unit_id_path)
+                unit_rows = _unit_rows_from_stats(unit_stats)
+                stats_path = output_dir / "geology_models" / "unit_stats.json"
+                stats_path.parent.mkdir(parents=True, exist_ok=True)
+                stats_path.write_text(
+                    json.dumps(unit_stats, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+
+            if mode == "gmm_only":
+                defs_path = output_dir / "geology_models" / "unit_defs_gmm.csv"
+                groups_path = output_dir / "geology_models" / "unit_groups_gmm_only.csv"
+                defs_path.write_text(_unit_defs_rows_to_csv(unit_rows), encoding="utf-8")
+                groups_path.write_text(_one_to_one_groups_csv(unit_stats), encoding="utf-8")
+                geo_cfg["unit_defs_csv"] = str(defs_path)
+                geo_cfg["unit_groups_csv"] = str(groups_path)
+            elif mode == "gmm_bic_auto":
+                defs_path = output_dir / "geology_models" / "unit_defs_gmm.csv"
+                groups_path = output_dir / "geology_models" / "unit_groups_gmm.csv"
+                raw_name_map: Dict[str, str] = {}
+                raw_groups_csv = ""
+                try:
+                    context_text = self._load_context_text(geo_cfg)
+                    response = self.unit_csv_agent.design_unit_names_and_groups(
+                        geology_text=context_text,
+                        project_name=cfg["project"]["name"],
+                        unit_stats=unit_stats,
+                        target_name=geo_cfg.get("target_name", ""),
+                        min_groups=3,
+                        max_groups=5,
+                    )
+                    if isinstance(response, dict):
+                        raw_name_map = response.get("unit_name_map", {})
+                        raw_groups_csv = str(response.get("unit_groups_csv", ""))
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] PetrologyAgent grouping failed; using deterministic fallback: {exc}")
+                named_rows = _apply_unit_name_map(
+                    unit_rows,
+                    _normalize_unit_name_map(raw_name_map, [int(r["unit_id"]) for r in unit_rows]),
+                )
+                defs_path.write_text(_unit_defs_rows_to_csv(named_rows), encoding="utf-8")
+                groups_path.write_text(
+                    _normalize_unit_groups_csv(
+                        raw_groups_csv,
+                        unit_stats=unit_stats,
+                        target_name=geo_cfg.get("target_name", ""),
+                    ),
+                    encoding="utf-8",
+                )
+                geo_cfg["unit_defs_csv"] = str(defs_path)
+                geo_cfg["unit_groups_csv"] = str(groups_path)
+            elif mode == "fixed_units_llm_groups":
+                defs_path = output_dir / "geology_models" / "unit_defs_fixed_llm.csv"
+                groups_path = output_dir / "geology_models" / "unit_groups_fixed_llm.csv"
+                raw_name_map: Dict[str, str] = {}
+                raw_groups_csv = ""
+                try:
+                    context_text = self._load_context_text(geo_cfg)
+                    response = self.unit_csv_agent.design_unit_names_and_groups(
+                        geology_text=context_text,
+                        project_name=cfg["project"]["name"],
+                        unit_stats=unit_stats,
+                        target_name=geo_cfg.get("target_name", ""),
+                        min_groups=3,
+                        max_groups=5,
+                    )
+                    if isinstance(response, dict):
+                        raw_name_map = response.get("unit_name_map", {})
+                        raw_groups_csv = str(response.get("unit_groups_csv", ""))
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[WARN] PetrologyAgent grouping failed; using deterministic fallback: {exc}")
+                defs_path.write_text(
+                    _unit_defs_rows_to_csv(
+                        _apply_unit_name_map(
+                            unit_rows,
+                            _normalize_unit_name_map(raw_name_map, [int(r["unit_id"]) for r in unit_rows]),
+                        )
+                    ),
+                    encoding="utf-8",
+                )
+                groups_path.write_text(
+                    _normalize_unit_groups_csv(
+                        raw_groups_csv,
+                        unit_stats=unit_stats,
+                        target_name=geo_cfg.get("target_name", ""),
+                    ),
+                    encoding="utf-8",
+                )
+                geo_cfg["unit_defs_csv"] = str(defs_path)
+                geo_cfg["unit_groups_csv"] = str(groups_path)
+            elif mode == "fixed_units_fixed_groups":
+                if not geo_cfg.get("unit_groups_csv"):
+                    raise ValueError("fixed_units_fixed_groups requires geology.unit_groups_csv")
+                defs_path = Path(str(geo_cfg.get("unit_defs_csv", "")))
+                if not defs_path.is_file():
+                    defs_path = output_dir / "geology_models" / "unit_defs_fixed.csv"
+                    defs_path.write_text(_unit_defs_rows_to_csv(unit_rows), encoding="utf-8")
+                    geo_cfg["unit_defs_csv"] = str(defs_path)
+
+            geo_cfg["unit_id_npy"] = str(unit_id_path)
+            cfg["geology"] = geo_cfg
+        elif mode == "csv_manual":
+            cfg["geology"] = _normalize_geo_input_paths(cfg, geo_cfg)
+        else:
+            raise ValueError(
+                "Unsupported geology.mode. Use csv_manual, reuse_existing_geology, "
+                "gmm_bic_auto, fixed_units_llm_groups, fixed_units_fixed_groups, or gmm_only."
+            )
+
+        geology_result = build_geology_model(
+            project_name=cfg["project"]["name"],
+            input_dir=cfg["project"]["input_dir"],
+            inversion_dir=source_dir,
+            output_dir=output_dir,
+            min_voxels=geo_cfg["min_voxels"],
+            fill_iterations=geo_cfg["fill_iterations"],
+            unit_defs_csv=geo_cfg.get("unit_defs_csv"),
+            unit_groups_csv=geo_cfg.get("unit_groups_csv"),
+            unit_id_npy=geo_cfg.get("unit_id_npy"),
+            make_plots=run_cfg.get("make_plots", True),
+        )
+        if unit_stats:
+            geology_result["unit_stats"] = unit_stats
+        group_path = geo_cfg.get("unit_groups_csv")
+        if group_path and Path(str(group_path)).is_file():
+            mapping: Dict[int, int] = {}
+            with Path(str(group_path)).open("r", encoding="utf-8-sig", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    try:
+                        mapping[int(float(row["unit_id"]))] = int(float(row["geo_id"]))
+                    except (KeyError, TypeError, ValueError):
+                        continue
+            geology_result["unit_to_geo"] = mapping
+        return geology_result
+
+    def _load_context_text(self, geo_cfg: Dict[str, Any]) -> str:
+        raw = geo_cfg.get("context_path")
+        if not raw:
+            return ""
+        try:
+            return read_geology_context(Path(str(raw)))
+        except FileNotFoundError as exc:
+            print(f"[WARN] Geological context unavailable; continuing with structured evidence only: {exc}")
+            return ""
+
+    def _prepare_interpretation_artifacts(
+        self,
+        cfg: Dict[str, Any],
+        workflow_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build and persist deterministic artifacts shared by all output modes."""
+
+        output_dir = Path(workflow_result["interpretation_output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        result_summary = build_result_summary(workflow_result)
+        slice_analysis = build_slice_analysis(workflow_result)
+        geo_result = workflow_result.get("geology_result") or {}
+        target_info = resolve_target_identifiers(cfg["geology"], geo_result)
+        target_info["name"] = cfg["geology"].get("target_name", "unknown target")
+        context_text = self._load_context_text(cfg["geology"])
+        evidence = build_evidence_bundle(
+            workflow_result,
+            result_summary,
+            slice_analysis,
+            geology_context=context_text,
+            target_unit_ids=target_info["target_unit_ids"],
+            target_geo_ids=target_info["target_geo_ids"],
+        )
+        evidence_path = save_evidence_bundle(output_dir / "evidence_bundle.json", evidence)
+        return {
+            "output_dir": output_dir,
+            "result_summary": result_summary,
+            "slice_analysis": slice_analysis,
+            "geo_result": geo_result,
+            "target_info": target_info,
+            "context_text": context_text,
+            "inversion_result": workflow_result.get("inversion_result") or {},
+            "evidence": evidence,
+            "evidence_path": evidence_path,
+        }
+
+    def _collect_agent_interactions(self) -> List[Dict[str, Any]]:
+        """Return auditable interactions from agents used by this orchestrator."""
+
+        records: List[Dict[str, Any]] = []
+        for agent in (
+            self.context_agent,
+            self.data_agent,
+            self.inversion_agent,
+            self.geo_agent,
+            self.unit_csv_agent,
+            self.report_agent,
+            self.review_agent,
+        ):
+            for index, interaction in enumerate(getattr(agent, "interactions", []), 1):
+                records.append(
+                    {
+                        "agent": getattr(agent, "name", agent.__class__.__name__),
+                        "sequence": index,
+                        **interaction,
+                    }
+                )
+        return records
+
+    def _write_agent_trace(
+        self,
+        output_dir: Path,
+        cfg: Dict[str, Any],
+        stages: List[Dict[str, Any]],
+    ) -> Path:
+        """Persist agent messages with API-key redaction."""
+
+        path = output_dir / "agent_trace.json"
+        payload = {
+            "schema_version": "1.0",
+            "execution_mode": cfg["run"].get("execution_mode"),
+            "stages": stages,
+            "interactions": self._collect_agent_interactions(),
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+        return path
+
+    def _write_no_report_artifacts(
+        self,
+        cfg: Dict[str, Any],
+        workflow_result: Dict[str, Any],
+        prepared: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Return deterministic results while still writing auditable artifacts."""
+
+        output_dir = prepared["output_dir"]
+        evidence_path = prepared["evidence_path"]
+        agent_trace_path = self._write_agent_trace(
+            output_dir,
+            cfg,
+            [{"stage": "deterministic_interpretation", "status": "completed"}],
+        )
+        workflow_trace = {
+            "execution_mode": cfg["run"].get("execution_mode"),
+            "reports_generated": False,
+            "evidence_bundle": str(evidence_path),
+            "agent_trace": str(agent_trace_path),
+        }
+        (output_dir / "workflow_trace.json").write_text(
+            json.dumps(workflow_trace, ensure_ascii=False, indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
+        return {
+            "config": cfg,
+            "workflow_result": workflow_result,
+            "summary": prepared["result_summary"],
+            "slice_analysis": prepared["slice_analysis"],
+            "evidence_bundle": prepared["evidence"],
+            "evidence_bundle_path": str(evidence_path),
+            "agent_trace_path": str(agent_trace_path),
+        }
+
+    def _write_configured_report(
+        self,
+        cfg: Dict[str, Any],
+        workflow_result: Dict[str, Any],
+        user_request: str,
+        prepared: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Generate draft/evidence/review/final artifacts in one interpretation folder."""
+
+        prepared = prepared or self._prepare_interpretation_artifacts(cfg, workflow_result)
+        output_dir = prepared["output_dir"]
+        result_summary = prepared["result_summary"]
+        slice_analysis = prepared["slice_analysis"]
+        geo_result = prepared["geo_result"]
+        target_info = prepared["target_info"]
+        context_text = prepared["context_text"]
+        inversion_result = prepared["inversion_result"]
+        geo_paths = geo_result.get("paths", {})
+        inv_paths = inversion_result.get("paths", {})
+        fig_paths = {
+            "geo_3d": geo_paths.get("geo_3d_png", ""),
+            "scatter_rho_kappa": geo_paths.get("scatter_rho_kappa", ""),
+            "combo_slice_list": geo_paths.get("geo_combo_slice_pngs", []),
+            "combo_section_list": geo_paths.get("geo_combo_section_pngs", []),
+            "geo_geo_id_pngs": geo_paths.get("geo_geo_id_pngs", []),
+            "inversion_slice_list": inv_paths.get("inversion_result_slice_list", []),
+        }
+        report_dir = output_dir / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        fig_paths, allowed_figure_paths = _prepare_report_figure_inventory(fig_paths, report_dir)
+
+        if self.llm is None:
+            raise RuntimeError("Report generation requires an LLM client and an API key.")
+        draft = self.report_agent.write_report(
+            cfg=cfg,
+            result_summary=result_summary,
+            slice_analysis=slice_analysis,
+            vision_analysis={},
+            geology_context=context_text,
+            target_info=target_info,
+            fig_paths=fig_paths,
+            user_request=user_request,
+            use_vision=False,
+        )
+        draft, removed_draft_images = _sanitize_report_image_references(
+            draft,
+            report_dir,
+            allowed_figure_paths,
+        )
+        draft_path = report_dir / "draft_report.md"
+        draft_path.write_text(draft, encoding="utf-8")
+
+        evidence = prepared["evidence"]
+        evidence_path = prepared["evidence_path"]
+        final_report = draft
+        review_result: Dict[str, Any] | None = None
+        revision_summary: Dict[str, Any] = {"review_enabled": False, "revised": False}
+        run_cfg = cfg["run"]
+        if run_cfg.get("review_enabled", False):
+            review_result = self.review_agent.review_report(
+                inversion_parameters=inversion_result.get("inversion_parameters", {}),
+                source_manifest=workflow_result.get("source_manifest", {}),
+                result_summary=result_summary,
+                slice_analysis=slice_analysis,
+                coordinate_reference=evidence.get("coordinate_reference", {}),
+                target_depth_audit=evidence.get("target_depth_audit", {}),
+                unit_definitions=geo_result.get("unit_defs", {}),
+                unit_to_geo=geo_result.get("unit_to_geo", {}),
+                target_ids=target_info,
+                geology_context=context_text,
+                draft_report=draft,
+                deterministic_warnings=target_info.get("unknown_geo_ids", [])
+                + target_info.get("unknown_unit_ids", []),
+            )
+            review_path = output_dir / "reviews" / "review_round_1.json"
+            review_path.parent.mkdir(parents=True, exist_ok=True)
+            review_path.write_text(json.dumps(review_result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            max_rounds = min(1, max(0, int(run_cfg.get("max_review_rounds", 1))))
+            if review_result["decision"] == "REVISE_REPORT" and max_rounds >= 1:
+                final_report = self.report_agent.revise_report(
+                    draft,
+                    review_result,
+                    evidence,
+                    allowed_figure_paths=sorted(allowed_figure_paths),
+                )
+                revision_summary = {"review_enabled": True, "revised": True, "rounds": 1}
+            elif review_result["decision"] == "REVISE_REPORT":
+                revision_summary = {"review_enabled": True, "revised": False, "rounds": 0}
+            elif review_result["decision"] == "INSUFFICIENT_EVIDENCE":
+                final_report = (
+                    "# Insufficient evidence for a definitive interpretation\n\n"
+                    f"{review_result.get('summary', 'The review found insufficient structured evidence.')}\n"
+                )
+                revision_summary = {"review_enabled": True, "revised": False, "rounds": 1}
+            else:
+                revision_summary = {"review_enabled": True, "revised": False, "rounds": 1}
+            revision_path = output_dir / "reviews" / "revision_summary.json"
+            revision_path.write_text(json.dumps(revision_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        final_report = _append_standard_report_figures(final_report, fig_paths)
+        final_report, removed_final_images = _sanitize_report_image_references(
+            final_report,
+            report_dir,
+            allowed_figure_paths,
+        )
+        final_report = _sanitize_report_windows_paths(final_report)
+        figure_validation = {
+            "allowed_figure_paths": sorted(allowed_figure_paths),
+            "removed_from_draft": removed_draft_images,
+            "removed_from_final": removed_final_images,
+        }
+        (report_dir / "figure_validation.json").write_text(
+            json.dumps(figure_validation, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        final_path = report_dir / "final_report.md"
+        final_path.write_text(final_report, encoding="utf-8")
+        pdf_path = export_markdown_report_pdf(final_path, output_dir)
+        stages = [{"stage": "report_draft", "status": "completed", "path": str(draft_path)}]
+        if review_result is not None:
+            stages.append(
+                {
+                    "stage": "review",
+                    "status": "completed",
+                    "path": str(output_dir / "reviews" / "review_round_1.json"),
+                    "decision": review_result.get("decision"),
+                }
+            )
+        if revision_summary.get("revised"):
+            stages.append({"stage": "report_revision", "status": "completed", "path": str(final_path)})
+        agent_trace_path = self._write_agent_trace(output_dir, cfg, stages)
+        trace = {
+            "execution_mode": cfg["run"].get("execution_mode"),
+            "draft_report": str(draft_path),
+            "evidence_bundle": str(evidence_path),
+            "review": review_result,
+            "final_report": str(final_path),
+            "final_report_pdf": str(pdf_path) if pdf_path else None,
+            "agent_trace": str(agent_trace_path),
+        }
+        (output_dir / "workflow_trace.json").write_text(
+            json.dumps(trace, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+        )
+        return {
+            "config": cfg,
+            "workflow_result": workflow_result,
+            "summary": result_summary,
+            "slice_analysis": slice_analysis,
+            "evidence_bundle": evidence,
+            "review": review_result,
+            "report": final_report,
+            "draft_report_path": str(draft_path),
+            "report_path": str(final_path),
+            "pdf_path": str(pdf_path) if pdf_path else None,
+            "evidence_bundle_path": str(evidence_path),
+            "agent_trace_path": str(agent_trace_path),
+        }
+
+    def run_from_config(
+        self,
+        config: str | Path | Dict[str, Any],
+        user_request: str = "",
+    ) -> Dict[str, Any]:
+        """Run a configured workflow, including read-only reinterpretation mode."""
+
+        cfg = load_config(config)
+        resolve_execution_mode(cfg)
+        # Run only the inversion/load stage here. Geology modes are handled
+        # below so no source geology directory is ever used as a write target.
+        cfg_for_workflow = json.loads(json.dumps(cfg))
+        cfg_for_workflow["run"]["run_geology_model"] = False
+        workflow_result = run_workflow(cfg_for_workflow)
+        effective_cfg = workflow_result.get("effective_config", cfg)
+        # The inversion-only staging call disables geology temporarily. Put
+        # the requested downstream run/geology settings back after loading the
+        # archived physical parameters.
+        effective_cfg["run"] = deepcopy(cfg["run"])
+        effective_cfg["geology"] = deepcopy(cfg["geology"])
+        cfg = effective_cfg
+        workflow_result["config"] = cfg
+        workflow_result["geology_result"] = self._prepare_configured_geology(cfg, workflow_result)
+        workflow_result["config"] = cfg
+        prepared = self._prepare_interpretation_artifacts(cfg, workflow_result)
+        if cfg["run"].get("review_enabled", False) or cfg["run"].get("write_reports", True):
+            return self._write_configured_report(cfg, workflow_result, user_request, prepared=prepared)
+        return self._write_no_report_artifacts(cfg, workflow_result, prepared)
 
     def run_from_prompt(self, user_request: str) -> Dict[str, Any]:
+        """Preserve the original prompt-driven agent configuration workflow."""
+
+        if self.llm is None:
+            raise RuntimeError("Prompt-driven execution requires an LLM client and API key.")
+        cfg0 = self.context_agent.build_config(user_request)
+        cfg1 = self.data_agent.refine(cfg0, user_request)
+        cfg2 = self.inversion_agent.refine(cfg1, user_request, data_summary={})
+        cfg3 = self.geo_agent.refine(cfg2, user_request)
+        return self.run_from_config(cfg3, user_request=user_request)
+
+    def _legacy_run_from_prompt(self, user_request: str) -> Dict[str, Any]:
         # 0. ContextAgent
         cfg0 = self.context_agent.build_config(user_request)
 
@@ -1762,7 +2854,9 @@ class MultiAgentOrchestrator:
             print("[INFO] unit_defs_csv missing -> run inversion first, then auto-build unit_defs via GMM+BIC.")
 
             cfg_inv = json.loads(json.dumps(cfg3))
-            cfg_inv["run"]["run_inversion"] = True
+            # Legacy prompt mode still uses the configured execution mode. In
+            # interpret-existing mode this loads the archive and never reruns
+            # SimPEG; in full mode it preserves the historical behavior.
             cfg_inv["run"]["run_geology_model"] = False
             inv_only = run_workflow(cfg_inv)
             inversion_result = inv_only.get("inversion_result")
@@ -1844,7 +2938,7 @@ class MultiAgentOrchestrator:
             }
         else:
             # If unit_defs exists, force CSV-based classification as requested.
-            geo_cfg.pop("unit_id_npy", None)
+            # Preserve an explicitly supplied fixed unit partition.
 
             if not has_groups:
                 print("[INFO] unit_groups_csv missing -> auto-generate unit_groups.csv from existing unit_defs.csv.")
@@ -2065,107 +3159,10 @@ class MultiAgentOrchestrator:
         report_path = reports_dir / f"{cfg3['project']['name']}_report_{stamp}.md"
         report_path.write_text(report_md_full, encoding="utf-8")
 
-        pdf_generated = False
-        pdf_path = reports_dir / f"{cfg3['project']['name']}_report_{stamp}.pdf"
-        # Use names + cwd to avoid duplicating the reports dir in the path
-        pandoc_workdir = report_path.parent.resolve()
-        base_pandoc_cmd = ["pandoc", report_path.name, "-o", pdf_path.name]
-
-        env = os.environ.copy()
-        # Add common Windows install paths so users do not need to edit PATH manually.
-        extra_paths: List[Path] = []
-        if os.name == "nt":
-            extra_paths.extend(
-                [
-                    Path.home() / "AppData" / "Local" / "Programs" / "MiKTeX" / "miktex" / "bin" / "x64",
-                    Path.home() / "AppData" / "Local" / "Programs" / "MiKTeX" / "miktex" / "bin",
-                    Path("C:/Program Files/Pandoc"),
-                ]
-            )
-            # Winget often installs Pandoc under a versioned packages directory.
-            winget_pkg_root = Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
-            if winget_pkg_root.exists():
-                for exe in winget_pkg_root.glob("JohnMacFarlane.Pandoc_*/*/pandoc.exe"):
-                    extra_paths.append(exe.parent)
-        existing_path = env.get("PATH", "")
-        prepend = [str(p) for p in extra_paths if p.exists()]
-        if prepend:
-            env["PATH"] = os.pathsep.join(prepend + [existing_path])
-
-        if not shutil.which("pandoc", path=env.get("PATH")):
-            print(
-                "[WARN] Pandoc was not found in PATH; skipped PDF export. "
-                f"Markdown report saved to: {report_path}"
-            )
-        else:
-            engine_candidates = (
-                "xelatex",
-                "pdflatex",
-                "lualatex",
-                "tectonic",
-                "wkhtmltopdf",
-                "weasyprint",
-            )
-            available_engines = [
-                e for e in engine_candidates if shutil.which(e, path=env.get("PATH"))
-            ]
-            if not available_engines:
-                print(
-                    "[WARN] No supported PDF engine found; skipped PDF export. "
-                    "Looked for: "
-                    + ", ".join(engine_candidates)
-                    + f". Markdown report saved to: {report_path}"
-                )
-            else:
-                engine_errors: List[str] = []
-                for pdf_engine in available_engines:
-                    font_args: List[str] = []
-                    if pdf_engine == "xelatex" and os.name == "nt":
-                        fonts_dir = Path("C:/Windows/Fonts")
-                        if fonts_dir.exists():
-                            has_times = any(fonts_dir.glob("times*.tt*"))
-                            has_cambria = any(fonts_dir.glob("cambria*.tt*"))
-                            if has_times and has_cambria:
-                                font_args = [
-                                    "-V",
-                                    "mainfont=Times New Roman",
-                                    "-V",
-                                    "mathfont=Cambria Math",
-                                ]
-
-                    pandoc_cmd = [*base_pandoc_cmd, "--pdf-engine", pdf_engine, *font_args]
-                    try:
-                        proc = subprocess.run(
-                            pandoc_cmd,
-                            check=True,
-                            cwd=pandoc_workdir,
-                            env=env,
-                            text=True,
-                            capture_output=True,
-                        )
-                        pdf_generated = True
-                        print(f"PDF report saved to: {pdf_path} (engine: {pdf_engine})")
-                        stderr_text = (proc.stderr or "").strip()
-                        if stderr_text:
-                            print(f"Pandoc warnings ({pdf_engine}): {stderr_text}")
-                        break
-                    except subprocess.CalledProcessError as exc:
-                        stderr = (exc.stderr or "").strip()
-                        engine_errors.append(
-                            f"{pdf_engine} failed (exit {exc.returncode})"
-                            + (f": {stderr[:400]}" if stderr else "")
-                        )
-
-                if not pdf_generated:
-                    detail = " | ".join(engine_errors) if engine_errors else "No engine attempted."
-                    print(
-                        "[WARN] PDF generation failed with all available engines. "
-                        f"Tried: {', '.join(available_engines)}. Details: {detail}. "
-                        f"Markdown report saved to: {report_path}"
-                    )
+        pdf_path = export_markdown_report_pdf(report_path, output_root_path)
 
         print("Report saved to:", report_path)
-        if pdf_generated:
+        if pdf_path:
             print("PDF report saved to:", pdf_path)
 
         return {
@@ -2176,7 +3173,7 @@ class MultiAgentOrchestrator:
             "vision_analysis": vision_analysis,
             "report": report_text,
             "report_path": str(report_path),
-            "pdf_path": str(pdf_path) if pdf_generated else None,
+            "pdf_path": str(pdf_path) if pdf_path else None,
         }
 
 if __name__ == "__main__":
@@ -2188,22 +3185,43 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prompt",
         type=str,
-        required=True,
+        default=None,
         help="User task description",
+    )
+    parser.add_argument(
+        "--prompt-file",
+        type=str,
+        default=None,
+        help="Read the user task description from a UTF-8 text file.",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Optional JSON configuration. Uses run_from_config when supplied.",
     )
     args = parser.parse_args()
 
+    if args.prompt_file:
+        prompt_text = Path(args.prompt_file).read_text(encoding="utf-8")
+    else:
+        prompt_text = args.prompt or ""
+    if not args.config and not prompt_text.strip():
+        parser.error("provide --prompt, --prompt-file, or --config")
     orchestrator = MultiAgentOrchestrator()
-    result = orchestrator.run_from_prompt(args.prompt)
+    if args.config:
+        result = orchestrator.run_from_config(args.config, user_request=prompt_text)
+    else:
+        result = orchestrator.run_from_prompt(prompt_text)
 
-    print("\n=== Report ===\n")
-    print(result["report"])
     print("\n=== Output Path ===")
-    inv = result["workflow_result"]["inversion_result"]
-    geo = result["workflow_result"]["geology_result"]
+    print("  Report:", result.get("report_path", "(report not generated)"))
+    workflow = result.get("workflow_result", {})
+    inv = workflow.get("inversion_result")
+    geo = workflow.get("geology_result")
     if inv is not None:
-        print("  Inversion output root:", inv["paths"]["output_root"])
+        print("  Inversion source:", inv["paths"]["output_root"])
     if geo is not None:
-        print("  Geology slices dir   :", geo["paths"]["geo_slices_dir"])
+        print("  Geology output:", geo.get("paths", {}).get("geo_slices_dir", ""))
 
 
