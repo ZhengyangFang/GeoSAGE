@@ -10,6 +10,7 @@ env/
 build/
 dist/
 *.egg-info/
+uv.lock
 
 # Jupyter
 .ipynb_checkpoints/
@@ -51,12 +52,10 @@ mesh/
 *.pdf
 *.docx
 
-# Local metric tables and manuscript-analysis notebooks are not versioned.
-Hannah_model_metrics_table.csv
-
-# Local manuscript products and one-off notebooks deliberately excluded from GitHub.
+# Local manuscript products, metrics, and one-off notebooks deliberately excluded.
 Figure/
 Geology report/
+Hannah_model_metrics_table.csv
 1_2_language_driven_multi_agents_Hannah_auto_group.ipynb
 5_1build_pseudo_geology_from_csv.ipynb
 5_2_comparison_interpretation_LLM.ipynb
