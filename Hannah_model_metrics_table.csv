@@ -1,5 +1,0 @@
-model,phi_d_gravity,phi_d_magnetic,target_pct,report_words
-Claude,673.6,1853.0,4.886666666666667,5786
-GPT,667.0,1865.0,3.78,4343
-Gemini,705.7,2166.0,4.661666666666667,2550
-QWEN,624.2,1928.0,5.3475,3271
