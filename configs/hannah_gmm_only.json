@@ -1,0 +1,26 @@
+{
+  "project": {
+    "name": "Hannah",
+    "input_dir": "Hannah",
+    "output_dir": "Hannah_Inversion_GPT",
+    "source_inversion_dir": "Hannah_Inversion_GPT",
+    "interpretation_output_dir": "Hannah_Inversion_GPT_interpretations/gmm_only"
+  },
+  "geology": {
+    "mode": "gmm_only",
+    "context_path": "Hannah/Hannah_geology_context.pdf",
+    "target_unit_ids": [],
+    "target_geo_ids": [],
+    "target_name": "Serpentinite hydrogen play along Collayomi fault"
+  },
+  "run": {
+    "execution_mode": "interpret_existing",
+    "run_inversion": false,
+    "run_geology_model": true,
+    "make_plots": true,
+    "skip_configuration_agents": true,
+    "review_enabled": false,
+    "write_reports": false,
+    "max_review_rounds": 1
+  }
+}

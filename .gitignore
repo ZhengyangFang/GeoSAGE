@@ -53,5 +53,10 @@ mesh/
 
 # Keep selected lightweight project files trackable if needed.
 !Hannah_model_metrics_table.csv
-!Figure/
-!Figure/**
+
+# Local manuscript products and one-off notebooks deliberately excluded from GitHub.
+Figure/
+Geology report/
+1_2_language_driven_multi_agents_Hannah_auto_group.ipynb
+5_1build_pseudo_geology_from_csv.ipynb
+5_2_comparison_interpretation_LLM.ipynb

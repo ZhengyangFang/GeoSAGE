@@ -70,17 +70,17 @@ The Zenodo record contains both data archives and a snapshot of the code release
 When using GitHub as the code source, the most important files to download from
 Zenodo are the case-study folders and representative output folders.
 
-| Archive | Purpose | Size | MD5 |
-|---|---:|---:|---|
-| `Hannah.zip` | Hannah input data and supporting files. | 370.9 MiB | `4aaf247827762c8cee8af0e8d100fa4f` |
-| `Iowa.zip` | Iowa input data and supporting files. | 277.0 MiB | `ca483de52bbadc2d81f3b26395f18a7c` |
-| `Hannah_Inversion_GPT.zip` | Hannah representative GPT output. | 131.7 MiB | `829a4c317ad85a9add7226e1f1510252` |
-| `Hannah_Inversion_GPT_auto_group.zip` | Hannah GPT output with automatic grouping. | 112.0 MiB | `2a37ef9fdec79de1be6e763c63987d9e` |
-| `Hannah_Inversion_claude.zip` | Hannah representative Claude output. | 91.1 MiB | `aa03bad6bb592a8edc34c966c182bf78` |
-| `Hannah_Inversion_gemini.zip` | Hannah representative Gemini output. | 105.7 MiB | `fac3ec4ae9889792e79bae124a9c9180` |
-| `Hannah_Inversion_Qwen.zip` | Hannah representative Qwen output. | 81.0 MiB | `705efe7fa45ca58b666031c725dbc2a5` |
-| `Iowa_Inversion_GPT.zip` | Iowa representative GPT output. | 327.2 MiB | `9737236e27efecc98c67121b92125e39` |
-| `Figure.zip` | Publication and supplementary figures. | 45.2 MiB | `e6ea439b4cb3ce11a26013d49d26d36f` |
+| Archive | Purpose | Size |
+|---|---:|---:|
+| `Hannah.zip` | Hannah input data and supporting files. | 370.9 MiB |
+| `Iowa.zip` | Iowa input data and supporting files. | 277.0 MiB |
+| `Hannah_Inversion_GPT.zip` | Hannah representative GPT output. | 131.7 MiB |
+| `Hannah_Inversion_GPT_auto_group.zip` | Hannah GPT output with automatic grouping. | 112.0 MiB |
+| `Hannah_Inversion_claude.zip` | Hannah representative Claude output. | 91.1 MiB |
+| `Hannah_Inversion_gemini.zip` | Hannah representative Gemini output. | 105.7 MiB |
+| `Hannah_Inversion_Qwen.zip` | Hannah representative Qwen output. | 81.0 MiB |
+| `Iowa_Inversion_GPT.zip` | Iowa representative GPT output. | 327.2 MiB |
+| `Figure.zip` | Publication and supplementary figures. | 45.2 MiB |
 
 ## Installation
 
@@ -211,23 +211,6 @@ do
   unzip -o "$file"
 done
 ```
-
-### Check File Integrity
-
-Windows PowerShell:
-
-```powershell
-Get-FileHash Hannah.zip -Algorithm MD5
-Get-FileHash Iowa.zip -Algorithm MD5
-```
-
-Linux/macOS:
-
-```bash
-md5sum Hannah.zip Iowa.zip
-```
-
-Compare the output with the MD5 values in the Zenodo archive table above.
 
 ### Expected Directory Layout After Extraction
 
@@ -508,6 +491,73 @@ Iowa_Inversion_repro/inversion_result/
 Iowa_Inversion_repro/geology_models/
 ```
 
+## Reinterpret an existing inversion without rerunning SimPEG
+
+GeoSAGE can now treat a completed inversion directory as an immutable evidence source. In
+`interpret_existing` mode, `run_joint_inversion()` is never called. The archived mesh, density,
+susceptibility, optional predicted data, and inversion parameter snapshot are loaded read-only;
+new geology models, reports, review files, and manifests are written to a separate interpretation
+directory.
+
+The additional configuration fields are:
+
+```json
+{
+  "project": {
+    "source_inversion_dir": "Hannah_Inversion_GPT",
+    "interpretation_output_dir": "Hannah_Inversion_GPT_interpretations/my_run"
+  },
+  "run": {
+    "execution_mode": "interpret_existing",
+    "skip_configuration_agents": true,
+    "reuse_existing_geology": false,
+    "overwrite": false,
+    "review_enabled": false,
+    "max_review_rounds": 1
+  }
+}
+```
+
+The supported geology modes are `csv_manual`, `reuse_existing_geology`, `gmm_bic_auto`,
+`fixed_units_llm_groups`, `fixed_units_fixed_groups`, and `gmm_only`. GMM artifacts and all
+interpretation outputs are stored below the destination directory. Every run writes
+`effective_config.json`, `source_manifest.json`, `run_manifest.json`, `evidence_bundle.json`, and
+`agent_trace.json`; the source manifest records the available inversion artifacts and their sizes.
+The evidence and trace files are also written when report generation is disabled. Agent traces
+redact common API-key formats before they are saved.
+
+Example commands:
+
+```powershell
+# Reuse the archived quasi-geological model and generate a reviewed report.
+python multi_agent_runner.py --config configs/hannah_reuse_existing_geology.json --prompt-file prompts/hannah.txt
+
+# Keep fixed unit labels, but let the PetrologyAgent propose names and Geo groups.
+python multi_agent_runner.py --config configs/hannah_fixed_units_llm_groups.json --prompt-file prompts/hannah.txt
+
+# Deterministic GMM/BIC baseline with one-to-one Geo groups.
+python multi_agent_runner.py --config configs/hannah_gmm_only.json
+```
+
+For a comparison study, use `compare_interpretations.py` with a JSON containing one
+`source_inversion_dir`, a shared request, and separate scenario output directories. The comparison
+runner records the shared source inventory once and writes `comparison_summary.csv` and
+`comparison_summary.json`. The four low-cost comparison designs map to scenario fields as follows:
+
+| Comparison | Scenario setup |
+|---|---|
+| Report-only | `fixed_units_fixed_groups`, shared `unit_id_npy`/group CSV, `write_reports=true`; vary model or review. |
+| Grouping-only | `fixed_units_llm_groups`, shared `unit_id_npy`, `write_reports=false`; vary model. |
+| Prior sensitivity | Fixed Unit labels plus a different `context_path` for each scenario. |
+| Review ablation | Duplicate the same scenario with `review_enabled=false` and `true`. |
+
+Each scenario may set `write_reports`, `review_enabled`, `model`, `base_url`, `context_path`, and
+`unit_id_npy` independently. API keys are read only from environment variables.
+
+Existing full-run configurations remain valid. A legacy configuration with `run_inversion=false`
+is interpreted as `interpret_existing`; if no separate output directory is supplied, GeoSAGE
+creates a safe sibling `<source>_interpretations/` destination rather than modifying the source directory.
+
 ## Run The Multi-Agent Workflow
 
 The multi-agent workflow converts a natural-language prompt into a workflow
@@ -534,8 +584,9 @@ Then run one of:
 | `1_2_language_driven_multi_agents_Hannah_auto_group.ipynb` | Hannah multi-agent workflow with automatic grouping. |
 | `1_3_language_driven_multi_agents_Iowa.ipynb` | Iowa multi-agent workflow. |
 
-Before running these notebooks, set `API_BASE`, `MODEL_NAME`, and `API_KEY` in
-the first configuration cell.
+Before running these notebooks, set `API_BASE` and `MODEL_NAME` in the first configuration cell,
+and set `OPENAI_API_KEY` (or the provider-specific environment variable) in the shell. Notebook
+code reads the key from the environment and does not store credentials in the notebook.
 
 ## Reproduce Figures And Tables From Archived Outputs
 
@@ -624,7 +675,8 @@ The Zenodo archives were likely extracted in the wrong directory. Make sure
 ### Missing API Key
 
 The deterministic `runner.py` workflow does not require an API key. The
-multi-agent workflow does. Set `OPENAI_API_KEY` or pass `API_KEY` in the notebook.
+multi-agent workflow does. Set `OPENAI_API_KEY` (or `OPENROUTER_API_KEY` when using OpenRouter)
+in the environment.
 
 ### OpenRouter Returns HTML Instead Of JSON
 
