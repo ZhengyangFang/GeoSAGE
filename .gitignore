@@ -30,6 +30,7 @@ Iowa/
 # Generated inversion/modeling outputs restored from Zenodo or produced locally
 *_Inversion/
 *_Inversion_*/
+Hannah_LLM_comparison/
 iteration_model/
 inversion_result/
 geology_models/
