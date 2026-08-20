@@ -5,8 +5,8 @@
 
 GeoSAGE is a reproducible multi-agent workflow for geological reasoning from joint
 gravity and magnetic inversion models. The project accompanies the manuscript
-**A Multi-Agent Framework for Geological Reasoning From Joint Gravity and Magnetic
-Inversion Models**.
+**GeoSAGE: A Multi-Agent Workflow for Geological Reasoning From Joint Gravity and
+Magnetic Inversion Models**.
 
 This GitHub repository contains the source code, notebooks, project metadata, and
 lightweight examples. The case-study input data and representative computational
