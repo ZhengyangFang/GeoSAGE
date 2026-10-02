@@ -1,0 +1,64 @@
+{
+  "project": {
+    "name": "Iowa",
+    "input_dir": "data/Iowa",
+    "output_dir": "outputs/Iowa_Inversion_repro"
+  },
+  "region": {
+    "min_e": 580000.0,
+    "max_e": 615000.0,
+    "min_n": 4785000.0,
+    "max_n": 4825000.0
+  },
+  "data": {
+    "gravity_column": "Gzz",
+    "gravity_component": "gzz",
+    "std_grv": 0.25,
+    "std_mag": 10.0,
+    "std_grv_relative": false,
+    "std_mag_relative": false,
+    "flight_height_ft": 1000.0
+  },
+  "inversion": {
+    "inclination": 70.0,
+    "declination": 0.0,
+    "field_strength": 55068.0,
+    "reg_coefficient": [
+      108.0,
+      270.0
+    ],
+    "reg_grv_norm": [
+      2.0,
+      2.0,
+      2.0,
+      2.0
+    ],
+    "reg_mag_norm": [
+      2.0,
+      2.0,
+      2.0,
+      2.0
+    ],
+    "cross_gradient_lambda": 3000000000000000.0,
+    "optimization": {
+      "maxGNCG": 50
+    },
+    "irls": {
+      "maxIRLSiter": 50
+    }
+  },
+  "geology": {
+    "mode": "csv_manual",
+    "unit_defs_csv": "data/Iowa/Iowa_unit_defs.csv",
+    "unit_groups_csv": "data/Iowa/Iowa_unit_groups.csv",
+    "context_path": "data/Iowa/Iowa_geology_context.txt",
+    "target_name": "Iowa mineral exploration target",
+    "min_voxels": 10,
+    "fill_iterations": 3
+  },
+  "run": {
+    "run_inversion": true,
+    "run_geology_model": true,
+    "make_plots": true
+  }
+}

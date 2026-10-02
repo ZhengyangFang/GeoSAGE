@@ -4,6 +4,6 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def offline_environment(monkeypatch):
-    for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+    for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEOSAGE_WORKSPACE"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr("multi_agent_runner.export_markdown_report_pdf", lambda *a, **kw: None)
+    monkeypatch.setattr("geosage.multi_agent_runner.export_markdown_report_pdf", lambda *a, **kw: None)

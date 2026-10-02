@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from compare_interpretations import run_comparison
+from geosage.compare_interpretations import run_comparison
 from test_interpret_existing import _make_source
 
 

@@ -16,10 +16,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
-from runner import DEFAULT_CONFIG, deep_update, load_config, run_workflow, resolve_execution_mode
-from geo_modeling_workflow import build_geology_model
-from existing_results import load_existing_geology_result, save_recovered_geology_metadata
-from evidence_bundle import build_evidence_bundle, save_evidence_bundle
+from geosage.runner import DEFAULT_CONFIG, deep_update, load_config, run_workflow, resolve_execution_mode
+from geosage.geo_modeling_workflow import build_geology_model
+from geosage.existing_results import load_existing_geology_result, save_recovered_geology_metadata
+from geosage.evidence_bundle import build_evidence_bundle, save_evidence_bundle
 
 
 # =============================================================================
@@ -3179,7 +3179,7 @@ class MultiAgentOrchestrator:
             "pdf_path": str(pdf_path) if pdf_path else None,
         }
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -3226,5 +3226,9 @@ if __name__ == "__main__":
         print("  Inversion source:", inv["paths"]["output_root"])
     if geo is not None:
         print("  Geology output:", geo.get("paths", {}).get("geo_slices_dir", ""))
+
+
+if __name__ == "__main__":
+    main()
 
 

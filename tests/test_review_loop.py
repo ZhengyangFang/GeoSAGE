@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from test_interpret_existing import _config, _make_source
-from multi_agent_runner import MultiAgentOrchestrator
+from geosage.multi_agent_runner import MultiAgentOrchestrator
 
 
 class _FakeCompletions:

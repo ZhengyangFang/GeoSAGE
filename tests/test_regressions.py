@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import geo_modeling_workflow as geology
-import runner
-from compare_interpretations import run_comparison
-from existing_results import load_existing_geology_result, load_existing_inversion_result
+from geosage import geo_modeling_workflow as geology
+from geosage import runner
+from geosage.compare_interpretations import run_comparison
+from geosage.existing_results import load_existing_geology_result, load_existing_inversion_result
 from test_interpret_existing import _make_source
 
 

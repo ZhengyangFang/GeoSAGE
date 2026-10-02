@@ -16,6 +16,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import rasterio
 import discretize
+from geosage.paths import data_path, workspace_root
 
 from scipy.spatial import cKDTree
 from scipy.interpolate import griddata
@@ -172,8 +173,8 @@ def run_joint_inversion(
     gravity_component = (gravity_component or "").lower()
 
     # Resolve input/output paths.
-    input_dir = Path(input_dir) if input_dir is not None else Path(project_name)
-    output_root = Path(output_dir) if output_dir is not None else Path(f"{project_name}_Inversion")
+    input_dir = Path(input_dir) if input_dir is not None else data_path(project_name)
+    output_root = Path(output_dir) if output_dir is not None else workspace_root() / "outputs" / f"{project_name}_Inversion"
 
     # Input files.
     input_grv = input_dir / f"{project_name}_gravity_data.csv"

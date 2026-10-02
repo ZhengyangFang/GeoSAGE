@@ -15,15 +15,16 @@ from typing import Any
 
 import numpy as np
 
-from existing_results import build_source_manifest, load_existing_inversion_result
-from multi_agent_runner import (
+from geosage.existing_results import build_source_manifest, load_existing_inversion_result
+from geosage.multi_agent_runner import (
     LLMClient,
     MultiAgentOrchestrator,
     _cluster_units_from_inversion_gmm,
     _unit_defs_rows_to_csv,
     unit_stats_from_unit_id,
 )
-from runner import load_config
+from geosage.runner import load_config
+from geosage.paths import workspace_root, resolve_path
 
 
 def _shared_unit_partition(
@@ -116,19 +117,41 @@ def run_comparison(config: str | Path | dict[str, Any]) -> dict[str, Any]:
     """Run every scenario in a comparison JSON and write summary CSV/JSON."""
 
     if isinstance(config, (str, Path)):
-        with Path(config).open("r", encoding="utf-8-sig") as handle:
+        config_path = Path(config).expanduser().resolve()
+        with config_path.open("r", encoding="utf-8-sig") as handle:
             comparison = json.load(handle)
+        base = config_path.parent
     else:
         comparison = deepcopy(config)
-    source_dir = Path(comparison["source_inversion_dir"]).expanduser().resolve()
-    comparison_root = Path(comparison.get("comparison_root", "comparisons/geosage")).expanduser().resolve()
+        base = Path.cwd()
+    explicit = comparison.get("workspace_dir")
+    root = (base / Path(explicit).expanduser()).resolve() if explicit else workspace_root(base)
+    source_dir = resolve_path(comparison["source_inversion_dir"], root)
+    comparison_root = resolve_path(comparison.get("comparison_root", "outputs/comparisons"), root, output=True)
     if comparison_root == source_dir or source_dir in comparison_root.parents:
         raise ValueError("comparison_root must be outside the read-only source inversion directory")
     scenario_ids = [str(scenario["scenario_id"]) for scenario in comparison.get("scenarios", [])]
     if len(scenario_ids) != len(set(scenario_ids)):
         raise ValueError("scenario_id values must be unique")
     comparison_root.mkdir(parents=True, exist_ok=True)
-    base_config = load_config(comparison.get("base_config", {}))
+    base_config = comparison.get("base_config", {})
+    if isinstance(base_config, (str, Path)):
+        base_path = resolve_path(base_config, root)
+        with base_path.open("r", encoding="utf-8-sig") as handle:
+            base_config = json.load(handle)
+        project = base_config.setdefault("project", {})
+        explicit_base = project.get("workspace_dir")
+        project["workspace_dir"] = str(
+            (base_path.parent / Path(explicit_base).expanduser()).resolve()
+            if explicit_base else root
+        )
+        base_config = load_config(base_config)
+    else:
+        base_config.setdefault("project", {}).setdefault("workspace_dir", str(root))
+        base_config = load_config(base_config)
+    for key in ("reference_mask", "shared_unit_partition"):
+        if isinstance(comparison.get(key), str):
+            comparison[key] = str(resolve_path(comparison[key], root))
     base_config["project"]["source_inversion_dir"] = str(source_dir)
     base_config["project"]["output_dir"] = str(source_dir)
     base_config["run"]["execution_mode"] = "interpret_existing"
@@ -148,7 +171,7 @@ def run_comparison(config: str | Path | dict[str, Any]) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for scenario in comparison.get("scenarios", []):
         scenario_id = str(scenario["scenario_id"])
-        output_dir = Path(scenario.get("output_dir", comparison_root / scenario_id)).expanduser().resolve()
+        output_dir = resolve_path(scenario.get("output_dir", comparison_root / scenario_id), root, output=True)
         cfg = deepcopy(base_config)
         cfg["project"]["interpretation_output_dir"] = str(output_dir)
         cfg["geology"]["mode"] = str(scenario.get("geology_mode", cfg["geology"].get("mode", "gmm_only")))

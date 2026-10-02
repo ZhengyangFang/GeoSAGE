@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 import discretize
 
-import runner
-from existing_results import load_existing_inversion_result
-from multi_agent_runner import (
+from geosage import runner
+from geosage.existing_results import load_existing_inversion_result
+from geosage.multi_agent_runner import (
     MultiAgentOrchestrator,
     build_result_summary,
     build_slice_analysis,

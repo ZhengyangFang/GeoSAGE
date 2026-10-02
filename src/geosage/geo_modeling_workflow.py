@@ -18,6 +18,7 @@ import discretize
 from discretize.utils import active_from_xyz
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from scipy import ndimage
+from geosage.paths import data_path, result_path
 
 
 def build_geology_model(
@@ -68,8 +69,8 @@ def build_geology_model(
     dict
         Core models, classified labels, mapping metadata, and output paths.
     """
-    input_dir = Path(input_dir) if input_dir is not None else Path(project_name)
-    inversion_dir = Path(inversion_dir) if inversion_dir is not None else Path(f"{project_name}_Inversion")
+    input_dir = Path(input_dir) if input_dir is not None else data_path(project_name)
+    inversion_dir = Path(inversion_dir) if inversion_dir is not None else result_path(f"{project_name}_Inversion")
     inversion_dir = inversion_dir.expanduser().resolve()
     output_dir = Path(output_dir) if output_dir is not None else inversion_dir
     output_dir = output_dir.expanduser().resolve()

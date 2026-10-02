@@ -1,0 +1,27 @@
+{
+  "project": {
+    "name": "Iowa",
+    "input_dir": "data/Iowa",
+    "source_inversion_dir": "outputs/Iowa_Inversion_GPT",
+    "interpretation_output_dir": "outputs/Iowa_interpretations/reuse_existing_geology"
+  },
+  "geology": {
+    "mode": "reuse_existing_geology",
+    "unit_defs_csv": "data/Iowa/Iowa_unit_defs.csv",
+    "unit_groups_csv": "data/Iowa/Iowa_unit_groups.csv",
+    "context_path": "data/Iowa/Iowa_geology_context.txt",
+    "target_unit_ids": [],
+    "target_geo_ids": [
+      5
+    ],
+    "target_name": "Primary mafic magmatic system"
+  },
+  "run": {
+    "execution_mode": "interpret_existing",
+    "run_inversion": false,
+    "run_geology_model": true,
+    "make_plots": false,
+    "write_reports": false,
+    "review_enabled": false
+  }
+}

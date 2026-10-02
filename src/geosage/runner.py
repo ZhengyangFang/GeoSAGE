@@ -7,10 +7,11 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Union, Dict, Any, Optional
+from geosage.paths import resolve_config_paths
 
-from gravity_mag_joint_inversion import run_joint_inversion
-from geo_modeling_workflow import build_geology_model
-from existing_results import (
+from geosage.gravity_mag_joint_inversion import run_joint_inversion
+from geosage.geo_modeling_workflow import build_geology_model
+from geosage.existing_results import (
     build_source_manifest,
     load_existing_geology_result,
     load_existing_inversion_result,
@@ -123,9 +124,11 @@ def load_config(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
     - str/Path: treat as a JSON file path, read it, then override DEFAULT_CONFIG
     """
     cfg = deepcopy(DEFAULT_CONFIG)
+    config_path = None
 
     if isinstance(config, (str, Path)):
-        path = Path(config)
+        path = Path(config).expanduser().resolve()
+        config_path = path
         with path.open("r", encoding="utf-8-sig") as f:
             user_cfg = json.load(f)
     elif isinstance(config, dict):
@@ -138,7 +141,7 @@ def load_config(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
     if "reg_beta" in inv and "reg_coefficient" not in inv:
         inv["reg_coefficient"] = inv["reg_beta"]
     deep_update(cfg, user_cfg)
-    return cfg
+    return resolve_config_paths(cfg, config_path)
 
 
 def resolve_execution_mode(cfg: Dict[str, Any]) -> str:
@@ -449,7 +452,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -458,7 +461,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="config_example.json",
+        required=True,
         help="Path to JSON configuration file.",
     )
     args = parser.parse_args()
@@ -470,3 +473,7 @@ if __name__ == "__main__":
     if result["geology_result"] is not None:
         print("  Geology model figures in:",
               result["geology_result"]["paths"]["geo_slices_dir"])
+
+
+if __name__ == "__main__":
+    main()

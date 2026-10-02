@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import discretize
 
-from evidence_bundle import build_evidence_bundle
+from geosage.evidence_bundle import build_evidence_bundle
 
 
 def test_target_depth_audit_uses_local_topography(tmp_path) -> None:

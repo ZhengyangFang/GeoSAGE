@@ -6,7 +6,7 @@ from discretize import TensorMesh
 from pyproj import Transformer
 from rasterio.transform import from_bounds
 
-from gravity_mag_joint_inversion import run_joint_inversion
+from geosage.gravity_mag_joint_inversion import run_joint_inversion
 
 
 def test_small_joint_inversion_writes_loadable_core(tmp_path):
@@ -39,7 +39,7 @@ def test_small_joint_inversion_writes_loadable_core(tmp_path):
     for key in ("dens_core_3d", "susc_core_3d"):
         assert result[key].shape == (4, 4, 4)
         assert np.isfinite(result[key]).all()
-    from existing_results import load_existing_inversion_result
+    from geosage.existing_results import load_existing_inversion_result
     loaded = load_existing_inversion_result(tmp_path / "output")
     np.testing.assert_array_equal(loaded["dens_core_3d"], result["dens_core_3d"])
     np.testing.assert_array_equal(loaded["susc_core_3d"], result["susc_core_3d"])

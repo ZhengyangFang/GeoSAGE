@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "geosage"
-version = "1.0.4"
+version = "1.1.0"
 description = "A multi-agent workflow for geological reasoning from joint gravity and magnetic inversion models."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -70,17 +70,13 @@ dev = [
 "Data archive" = "https://doi.org/10.5281/zenodo.22034133"
 "Zenodo record" = "https://zenodo.org/records/22034133"
 
-[tool.setuptools]
-py-modules = [
-    "gravity_mag_joint_inversion",
-    "geo_modeling_workflow",
-    "multi_agent_runner",
-    "notebook_geo_helpers",
-    "runner",
-    "existing_results",
-    "evidence_bundle",
-    "compare_interpretations",
-]
+[project.scripts]
+geosage-run = "geosage.runner:main"
+geosage-agents = "geosage.multi_agent_runner:main"
+geosage-compare = "geosage.compare_interpretations:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100

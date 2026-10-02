@@ -1,8 +1,8 @@
 {
   "project": {
     "name": "Hannah",
-    "input_dir": "Hannah",
-    "output_dir": "Hannah_Inversion"
+    "input_dir": "data/Hannah",
+    "output_dir": "outputs/Hannah_Inversion"
   },
   "region": {
     "min_e": 510000.0,
@@ -20,15 +20,41 @@
     "inclination": 62.0,
     "declination": 15.0,
     "field_strength": 50686.0,
-    "grv_alpha": [20.0, 1.0, 1.0, 1.0],
-    "mag_alpha": [10.0, 1.0, 1.0, 1.0],
-    "reg_grv_norm": [1.0, 2.0, 2.0, 2.0],
-    "reg_mag_norm": [1.0, 2.0, 2.0, 2.0],
+    "grv_alpha": [
+      20.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "mag_alpha": [
+      10.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "reg_grv_norm": [
+      1.0,
+      2.0,
+      2.0,
+      2.0
+    ],
+    "reg_mag_norm": [
+      1.0,
+      2.0,
+      2.0,
+      2.0
+    ],
     "cross_gradient_lambda": 1000.0,
     "beta0_ratio": 10.0,
     "beta_cooling": 0.8,
-    "grv_bounds": [-3.0, 3.0],
-    "mag_bounds": [-3.0, 3.0],
+    "grv_bounds": [
+      -3.0,
+      3.0
+    ],
+    "mag_bounds": [
+      -3.0,
+      3.0
+    ],
     "optimization": {
       "maxGNCG": 50,
       "maxLS": 10,
@@ -44,8 +70,8 @@
     }
   },
   "geology": {
-    "unit_defs_csv": "Hannah/Hannah_unit_defs.csv",
-    "unit_groups_csv": "Hannah/Hannah_unit_groups.csv",
+    "unit_defs_csv": "data/Hannah/Hannah_unit_defs.csv",
+    "unit_groups_csv": "data/Hannah/Hannah_unit_groups.csv",
     "min_voxels": 10,
     "fill_iterations": 3
   },

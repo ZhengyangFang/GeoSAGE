@@ -8,14 +8,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from geo_modeling_workflow import build_geology_model
-from multi_agent_runner import MultiAgentOrchestrator
+from geosage.paths import data_path, result_path
+from geosage.geo_modeling_workflow import build_geology_model
+from geosage.multi_agent_runner import MultiAgentOrchestrator
 
 
 def digest(path: Path) -> str:
@@ -29,7 +28,7 @@ def inventory(root: Path) -> dict[str, str]:
 
 def validate(data_root: Path, output: Path, baseline_root: Path | None = None) -> list[dict]:
     data_root, output = data_root.resolve(), output.resolve()
-    sources = [data_root / f"{case}_Inversion_GPT" for case in ("Hannah", "Iowa")]
+    sources = [result_path(f"{case}_Inversion_GPT", data_root) for case in ("Hannah", "Iowa")]
     if any(output == s or s in output.parents for s in sources):
         raise ValueError("Validation output must be outside both source directories")
     output.mkdir(parents=True, exist_ok=False)
@@ -37,12 +36,12 @@ def validate(data_root: Path, output: Path, baseline_root: Path | None = None) -
     for case, source in zip(("Hannah", "Iowa"), sources, strict=True):
         before = inventory(source)
         config = {
-            "project": {"name": case, "input_dir": str(data_root / case),
+            "project": {"name": case, "input_dir": str(data_path(case, data_root)),
                         "source_inversion_dir": str(source),
                         "interpretation_output_dir": str(output / case / "reuse")},
             "geology": {"mode": "reuse_existing_geology",
-                        "unit_defs_csv": str(data_root / case / f"{case}_unit_defs.csv"),
-                        "context_path": str(data_root / case / f"{case}_geology_context.txt"),
+                        "unit_defs_csv": str(data_path(case, data_root) / f"{case}_unit_defs.csv"),
+                        "context_path": str(data_path(case, data_root) / f"{case}_geology_context.txt"),
                         "target_unit_ids": [], "target_geo_ids": [5]},
             "run": {"execution_mode": "interpret_existing", "run_inversion": False,
                     "run_geology_model": True, "make_plots": False,
@@ -50,7 +49,7 @@ def validate(data_root: Path, output: Path, baseline_root: Path | None = None) -
         }
         result = MultiAgentOrchestrator().run_from_config(config)
         reused = result["workflow_result"]["geology_result"]
-        rebuilt = build_geology_model(project_name=case, input_dir=data_root / case,
+        rebuilt = build_geology_model(project_name=case, input_dir=data_path(case, data_root),
             inversion_dir=source, output_dir=output / case / "rebuilt", make_plots=False)
         record = {"case": case, "source_files": len(before),
                   "shape": list(reused["geo_id_3d"].shape), "geo_defs": reused["geo_defs"],
