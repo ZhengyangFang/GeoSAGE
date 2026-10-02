@@ -8,6 +8,8 @@ can be reused by several independent geological interpretations.
 from __future__ import annotations
 
 import json
+import re
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -231,7 +233,7 @@ def load_existing_geology_result(
     unit_path = geo_dir / "unit_id_3d.npy"
     geo_path = geo_dir / "geo_id_3d.npy"
     defs_path = geo_dir / "geo_defs.json"
-    for path in (unit_path, geo_path, defs_path):
+    for path in (unit_path, geo_path):
         if not path.is_file():
             raise FileNotFoundError(f"Archived geology artifact not found: {path}")
 
@@ -243,9 +245,13 @@ def load_existing_geology_result(
             "Archived geology label shape does not match inversion model: "
             f"unit={unit_ids.shape}, geo={geo_ids.shape}, model={density.shape}"
         )
-    with defs_path.open("r", encoding="utf-8") as handle:
-        geo_defs_raw = json.load(handle)
-    geo_defs = {int(key): str(value) for key, value in geo_defs_raw.items()}
+    geo_defs_source: dict[str, Any] = {"kind": "json", "path": str(defs_path)}
+    if defs_path.is_file():
+        with defs_path.open("r", encoding="utf-8-sig") as handle:
+            geo_defs_raw = json.load(handle)
+        geo_defs = {int(key): str(value) for key, value in geo_defs_raw.items()}
+    else:
+        geo_defs, geo_defs_source = _recover_geo_names(root, geo_ids)
 
     paths = {
         "source_inversion_dir": str(root),
@@ -253,7 +259,7 @@ def load_existing_geology_result(
         "geology_models_dir": str(geo_dir),
         "unit_id_3d_npy": str(unit_path),
         "geo_id_3d_npy": str(geo_path),
-        "geo_defs_json": str(defs_path),
+        "geo_defs_json": str(defs_path) if defs_path.is_file() else "",
         "geo_slices_dir": str(geo_dir / "slices_and_sections"),
     }
     geo_3d_path = geo_dir / "geo_model_without_background.jpg"
@@ -284,7 +290,58 @@ def load_existing_geology_result(
         "geo_id_3d": geo_ids,
         "paths": paths,
         "geo_defs": geo_defs,
+        "geo_defs_source": geo_defs_source,
         "unit_defs": {},
         "reused_existing": True,
         "source_manifest": inversion_result.get("source_manifest", {}),
     }
+
+
+def _recover_geo_names(root: Path, geo_ids: np.ndarray) -> tuple[dict[int, str], dict[str, Any]]:
+    """Recover explicit numbered Geo Group definitions from archived reports.
+
+    Only names are recovered. Counts, geometry and properties always come from
+    the arrays, since prose in archived LLM reports may contain numeric errors.
+    Conflicting names are rejected instead of choosing the newest report.
+    """
+    pattern = re.compile(r"^\s*\d+\.\s+\*\*Geo Group (\d+)\s+[\u2013\u2014-]\s+(.+?)\*\*\s*$", re.MULTILINE)
+    candidates: dict[int, set[str]] = {}
+    sources = []
+    for path in sorted((root / "reports").glob("*.md")):
+        matches = pattern.findall(path.read_text(encoding="utf-8-sig"))
+        if matches:
+            sources.append(str(path))
+        for gid, name in matches:
+            candidates.setdefault(int(gid), set()).add(name.strip())
+    needed = {int(gid) for gid in np.unique(geo_ids) if int(gid) != 0}
+    conflicts = sorted(gid for gid in needed if len(candidates.get(gid, set())) > 1)
+    if conflicts:
+        raise ValueError(f"Conflicting archived Geo Group names for IDs {conflicts}; provide geo_defs.json")
+    missing = needed - candidates.keys()
+    names = {gid: next(iter(candidates[gid])) for gid in needed - missing}
+    if missing:
+        warnings.warn(
+            f"Archived geology names unavailable for IDs {sorted(missing)} in {root}. "
+            "Labels are preserved; group names will be marked unavailable.",
+            RuntimeWarning, stacklevel=2,
+        )
+        names.update({gid: f"Geo ID {gid} (name unavailable)" for gid in missing})
+    return names, {"kind": "archived_report" if candidates else "unavailable",
+                   "paths": sources, "missing_ids": sorted(missing)}
+
+
+def save_recovered_geology_metadata(result: dict[str, Any], output_dir: str | Path) -> None:
+    """Persist recovered names and evidence in the new interpretation only."""
+    provenance = result.get("geo_defs_source", {})
+    if provenance.get("kind") != "archived_report":
+        return
+    source = Path(result["paths"]["source_inversion_dir"]).resolve()
+    output = Path(output_dir).resolve()
+    if output == source or source in output.parents:
+        return
+    directory = output / "geology_models"
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, value in (("geo_defs.json", result["geo_defs"]),
+                        ("geo_defs_provenance.json", provenance)):
+        (directory / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    result["paths"]["geo_defs_json"] = str(directory / "geo_defs.json")

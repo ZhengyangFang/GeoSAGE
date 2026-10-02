@@ -11,6 +11,27 @@ build/
 dist/
 *.egg-info/
 uv.lock
+.pytest_cache/
+.ruff_cache/
+.audit-tmp/
+.repo-audit/
+comparisons/
+validation_outputs/
+logdata/
+Hannah_onlygeology/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.xyz
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.log
+geo_defs.json
+geo_defs_provenance.json
+validation.json
 
 # Jupyter
 .ipynb_checkpoints/

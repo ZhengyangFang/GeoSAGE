@@ -14,6 +14,7 @@ from existing_results import (
     build_source_manifest,
     load_existing_geology_result,
     load_existing_inversion_result,
+    save_recovered_geology_metadata,
 )
 
 
@@ -111,7 +112,7 @@ def deep_update(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]
         if isinstance(v, dict) and isinstance(base.get(k), dict):
             deep_update(base[k], v)
         else:
-            base[k] = v
+            base[k] = deepcopy(v)
     return base
 
 
@@ -125,14 +126,18 @@ def load_config(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
 
     if isinstance(config, (str, Path)):
         path = Path(config)
-        with path.open("r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8-sig") as f:
             user_cfg = json.load(f)
-        deep_update(cfg, user_cfg)
     elif isinstance(config, dict):
-        deep_update(cfg, config)
+        user_cfg = config
     else:
         raise TypeError("config must be a dict or a path to JSON.")
 
+    user_cfg = deepcopy(user_cfg)
+    inv = user_cfg.get("inversion", {})
+    if "reg_beta" in inv and "reg_coefficient" not in inv:
+        inv["reg_coefficient"] = inv["reg_beta"]
+    deep_update(cfg, user_cfg)
     return cfg
 
 
@@ -210,7 +215,12 @@ def _archived_parameters_to_config(
     if "weight_mag" in parameters:
         inversion["mag_alpha"] = parameters["weight_mag"]
     bounds = parameters.get("inv_bound")
-    if isinstance(bounds, (list, tuple)) and len(bounds) == 4:
+    if isinstance(bounds, dict):
+        if "grv_lb" in bounds and "grv_ub" in bounds:
+            inversion["grv_bounds"] = [bounds["grv_lb"], bounds["grv_ub"]]
+        if "mag_lb" in bounds and "mag_ub" in bounds:
+            inversion["mag_bounds"] = [bounds["mag_lb"], bounds["mag_ub"]]
+    elif isinstance(bounds, (list, tuple)) and len(bounds) == 4:
         inversion["grv_bounds"] = [bounds[0], bounds[2]]
         inversion["mag_bounds"] = [bounds[1], bounds[3]]
     if isinstance(parameters.get("optimization"), dict):
@@ -229,16 +239,27 @@ def _safe_interpretation_output_dir(
     """Choose a write directory that cannot accidentally modify the source run."""
 
     source = source_dir.resolve()
+
+    def reserve(path: Path) -> Path:
+        if overwrite:
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+        candidate = path
+        suffix = 0
+        while True:
+            try:
+                candidate.mkdir(parents=True, exist_ok=False)
+                return candidate
+            except FileExistsError:
+                suffix += 1
+                candidate = path.with_name(f"{path.name}_{suffix}")
+
     requested = Path(requested_dir).expanduser().resolve() if requested_dir else None
     requested_inside_source = requested is not None and (
         requested == source or source in requested.parents
     )
     if requested is not None and not requested_inside_source:
-        if requested.exists() and any(requested.iterdir()) and not overwrite:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            requested = requested.parent / f"{requested.name}_{stamp}"
-        requested.mkdir(parents=True, exist_ok=True)
-        return requested
+        return reserve(requested)
 
     if requested_inside_source:
         warnings.warn(
@@ -251,11 +272,7 @@ def _safe_interpretation_output_dir(
     if requested_inside_source and requested is not None and requested != source:
         base = base / requested.name
     destination = base / "latest"
-    if destination.exists() and not overwrite:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        destination = base / f"run_{stamp}"
-    destination.mkdir(parents=True, exist_ok=True)
-    return destination
+    return reserve(destination)
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -381,6 +398,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
             if source_dir is None or inversion_result is None:
                 raise RuntimeError("Cannot reuse geology without an inversion source.")
             geology_result = load_existing_geology_result(source_dir, inversion_result)
+            save_recovered_geology_metadata(geology_result, interpretation_dir)
         else:
             if source_dir is None or interpretation_dir is None:
                 raise RuntimeError("Workflow directories were not resolved.")
@@ -416,6 +434,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
         _write_json(interpretation_dir / "source_manifest.json", source_manifest)
         _write_json(interpretation_dir / "run_manifest.json", run_manifest)
     elif source_manifest:
+        _write_json(interpretation_dir / "effective_config.json", cfg)
         _write_json(interpretation_dir / "source_manifest.json", source_manifest)
         _write_json(interpretation_dir / "run_manifest.json", run_manifest)
 

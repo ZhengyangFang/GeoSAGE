@@ -1,0 +1,20 @@
+# Tested Windows Python 3.13 scientific environment.
+# Optional: pip install -c constraints-tested.txt ".[dev]"
+numpy==2.3.5
+scipy==1.17.0
+simpeg==0.25.0
+discretize==0.12.0
+choclo==0.3.2
+numba==0.63.1
+llvmlite==0.46.0
+pymatsolver==0.4.0
+h5py==3.15.1
+pandas==3.0.0
+scikit-learn==1.8.0
+matplotlib==3.10.8
+pyvista==0.47.0
+vtk==9.5.2
+rasterio==1.5.0
+pyproj==3.7.2
+openai==2.17.0
+pypdf==6.7.0

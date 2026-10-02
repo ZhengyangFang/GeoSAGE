@@ -60,8 +60,8 @@ def build_geology_model(
         ``output_dir/geology_models``. If omitted, the historical behavior of
         writing below ``inversion_dir`` is retained.
     make_plots : bool
-        Retained for workflow compatibility. Plot generation remains enabled
-        for existing callers; lightweight test callers may set this to false.
+        Generate figures when true. False writes numerical models and metadata
+        without invoking Matplotlib or PyVista renderers.
 
     Returns
     -------
@@ -102,8 +102,11 @@ def build_geology_model(
     print("susc_core_3d.shape =", susc_core_3d.shape)
 
     nx, ny, nz = dens_core_3d.shape
-    assert (nx, ny, nz) == mesh_core.shape_cells, \
-        f"Mesh cells {mesh_core.shape_cells} != model {dens_core_3d.shape}"
+    if dens_core_3d.shape != susc_core_3d.shape or dens_core_3d.shape != mesh_core.shape_cells:
+        raise ValueError(
+            f"Model shape mismatch: mesh={mesh_core.shape_cells}, "
+            f"density={dens_core_3d.shape}, susceptibility={susc_core_3d.shape}"
+        )
 
     nodes = mesh_core.nodes
     x_nodes = np.unique(nodes[:, 0])
@@ -154,7 +157,9 @@ def build_geology_model(
     # Optional direct unit labels from clustering; when provided, this
     # preserves the exact unsupervised classification without re-binning
     # through rectangular density-susceptibility intervals.
-    if input_unit_id is not None and input_unit_id.exists():
+    if input_unit_id is not None:
+        if not input_unit_id.is_file():
+            raise FileNotFoundError(f"Requested unit partition not found: {input_unit_id}")
         unit_id_3d = np.load(input_unit_id).astype(np.int16, copy=False)
         if unit_id_3d.shape != dens_core_3d.shape:
             raise ValueError(
@@ -183,69 +188,70 @@ def build_geology_model(
     print("voxel count per unit_id:", dict(zip(unique, counts)))
     unit_flat = unit_id_3d.ravel()
 
-    # 3) Crossplot density vs susceptibility colored by unit_id.
-    plt.figure(figsize=(9, 6))
-    dens_scatter = dens_flat[active_flat]
-    susc_scatter = susc_flat[active_flat]
-    unit_scatter = unit_flat[active_flat]
-    if dens_scatter.size == 0:
-        raise ValueError("No active cells found for scatter analysis.")
+    if make_plots:
+        # 3) Crossplot density vs susceptibility colored by unit_id.
+        plt.figure(figsize=(9, 6))
+        dens_scatter = dens_flat[active_flat]
+        susc_scatter = susc_flat[active_flat]
+        unit_scatter = unit_flat[active_flat]
+        if dens_scatter.size == 0:
+            raise ValueError("No active cells found for scatter analysis.")
 
-    unique_ids = np.unique(unit_scatter)
-    has_unclassified = 0 in unique_ids
-    unique_ids = unique_ids[unique_ids != 0]
-    unique_ids = np.sort(unique_ids)
+        unique_ids = np.unique(unit_scatter)
+        has_unclassified = 0 in unique_ids
+        unique_ids = unique_ids[unique_ids != 0]
+        unique_ids = np.sort(unique_ids)
 
-    n_units = len(unique_ids)
-    cmap = mpl.colormaps.get_cmap("coolwarm").resampled(n_units)
+        n_units = len(unique_ids)
+        cmap = mpl.colormaps.get_cmap("coolwarm").resampled(n_units)
 
-    for i, uid in enumerate(unique_ids):
-        mask = unit_scatter == uid
-        if not np.any(mask):
-            continue
-        label = f"Unit {uid}: {unit_defs.get(uid, {}).get('name', '')}"
-        color = cmap(i)
-        plt.scatter(
-            dens_scatter[mask],
-            susc_scatter[mask],
-            s=5,
-            alpha=0.5,
-            label=label,
-            color=color,
-        )
-
-    if has_unclassified:
-        mask0 = unit_scatter == 0
-        if np.any(mask0):
+        for i, uid in enumerate(unique_ids):
+            mask = unit_scatter == uid
+            if not np.any(mask):
+                continue
+            label = f"Unit {uid}: {unit_defs.get(uid, {}).get('name', '')}"
+            color = cmap(i)
             plt.scatter(
-                dens_scatter[mask0],
-                susc_scatter[mask0],
+                dens_scatter[mask],
+                susc_scatter[mask],
                 s=5,
-                alpha=0.3,
-                color="lightgray",
-                label="Unclassified (0)",
+                alpha=0.5,
+                label=label,
+                color=color,
             )
 
-    plt.axhline(0.0, color="k", linewidth=0.5)
-    plt.axvline(0.0, color="k", linewidth=0.5)
+        if has_unclassified:
+            mask0 = unit_scatter == 0
+            if np.any(mask0):
+                plt.scatter(
+                    dens_scatter[mask0],
+                    susc_scatter[mask0],
+                    s=5,
+                    alpha=0.3,
+                    color="lightgray",
+                    label="Unclassified (0)",
+                )
 
-    # Auto-adjust axis limits based on actual data range with 10% padding
-    dens_min, dens_max = np.nanmin(dens_scatter), np.nanmax(dens_scatter)
-    susc_min, susc_max = np.nanmin(susc_scatter), np.nanmax(susc_scatter)
+        plt.axhline(0.0, color="k", linewidth=0.5)
+        plt.axvline(0.0, color="k", linewidth=0.5)
 
-    dens_pad = (dens_max - dens_min) * 0.1 if dens_max != dens_min else 0.1
-    susc_pad = (susc_max - susc_min) * 0.1 if susc_max != susc_min else 0.01
+        # Auto-adjust axis limits based on actual data range with 10% padding
+        dens_min, dens_max = np.nanmin(dens_scatter), np.nanmax(dens_scatter)
+        susc_min, susc_max = np.nanmin(susc_scatter), np.nanmax(susc_scatter)
 
-    plt.xlim(dens_min - dens_pad, dens_max + dens_pad)
-    plt.ylim(susc_min - susc_pad, susc_max + susc_pad)
+        dens_pad = (dens_max - dens_min) * 0.1 if dens_max != dens_min else 0.1
+        susc_pad = (susc_max - susc_min) * 0.1 if susc_max != susc_min else 0.01
 
-    plt.xlabel("Density (g/cm$^3$)")
-    plt.ylabel("Susceptibility (SI)")
-    plt.grid(True, linestyle="--", linewidth=0.5)
-    plt.legend(loc="lower left", fontsize=8, frameon=True)
-    plt.tight_layout()
-    plt.savefig(out_geo_dir / "density_susceptibility_scatter_by_unit.png", dpi=300)
-    plt.close()
+        plt.xlim(dens_min - dens_pad, dens_max + dens_pad)
+        plt.ylim(susc_min - susc_pad, susc_max + susc_pad)
+
+        plt.xlabel("Density (g/cm$^3$)")
+        plt.ylabel("Susceptibility (SI)")
+        plt.grid(True, linestyle="--", linewidth=0.5)
+        plt.legend(loc="lower left", fontsize=8, frameon=True)
+        plt.tight_layout()
+        plt.savefig(out_geo_dir / "density_susceptibility_scatter_by_unit.png", dpi=300)
+        plt.close()
 
     # 4) Map units to coarser geo groups.
     df_groups = pd.read_csv(input_unit_groups)

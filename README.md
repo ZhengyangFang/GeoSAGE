@@ -57,6 +57,11 @@ reasoning path can be inspected without exposing API credentials.
 
 ## Repository And Data Policy
 
+This repository publishes **code only**, together with configuration templates,
+tests, dependency metadata, and documentation. Case-study inputs, computed models,
+reports, recovered mappings, figures, and validation outputs remain outside Git.
+Notebooks are distributed with execution outputs and attachments removed.
+
 Large files should not be committed to GitHub. The data archive contains `.zip`
 packages with the input data, generated models, figures, and representative outputs.
 Keep these downloaded folders untracked in Git.
@@ -104,6 +109,37 @@ only the archives needed for the workflow you plan to run.
 | `Iowa_Inversion_GPT.zip` | Iowa representative GPT result. | 327.2 MiB |
 
 ## Installation
+
+The regression suite includes a small synthetic SimPEG inversion and needs no
+case-study downloads or LLM credentials. For development, install `.[dev]` and run
+`python -m pytest`. CI runs on Windows and Linux with Python 3.11 and 3.13.
+`constraints-tested.txt` records the scientific package versions used for local
+Windows/Python 3.13 validation; apply it with
+`python -m pip install -c constraints-tested.txt ".[dev]"` when matching that environment.
+SimPEG is restricted to the tested 0.25 API series until the optimization API is migrated.
+
+For exact inspection of previously saved results, use
+`geology.mode="reuse_existing_geology"` with `run.execution_mode="interpret_existing"`.
+This keeps the saved label arrays intact. Rebuilding from CSV is a separate operation:
+historical archives can use different topography masks or cleanup settings, so rebuilding
+must not be assumed to reproduce old labels. The current numerical algorithms and defaults
+are retained in this maintenance update.
+
+If an archive lacks `geo_defs.json`, the loader can recover explicit numbered
+`Geo Group` definitions from its Markdown reports. It rejects conflicting names,
+marks unavailable names explicitly, and computes numerical statistics from arrays.
+Recovered names and provenance are written into the new interpretation directory.
+
+To validate your local archives without an LLM or a new inversion:
+
+```bash
+python examples/validate_archived_results.py --data-root /path/to/data --output-dir /path/to/new/validation
+```
+
+The output directory must be new. This checks exact archived-label reuse, verifies
+all source files remain unchanged, and separately compares CSV rebuilds with archived
+labels. All validation artifacts stay local. `make_plots=false` disables all geology
+rendering; repeated runs without `overwrite=true` reserve separate output directories.
 
 Use Python 3.11, 3.12, or 3.13. Python 3.11 or 3.12 is recommended for the
 widest availability of scientific and geospatial wheels.

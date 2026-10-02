@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, List, Tuple
 from runner import DEFAULT_CONFIG, deep_update, load_config, run_workflow, resolve_execution_mode
 from geo_modeling_workflow import build_geology_model
-from existing_results import load_existing_geology_result
+from existing_results import load_existing_geology_result, save_recovered_geology_metadata
 from evidence_bundle import build_evidence_bundle, save_evidence_bundle
 
 
@@ -269,6 +269,8 @@ def export_markdown_report_pdf(report_path: Path, output_dir: Path) -> Optional[
                 cwd=pandoc_workdir,
                 env=env,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 capture_output=True,
             )
             warning_text = (result.stderr or "").strip()
@@ -2323,6 +2325,7 @@ class MultiAgentOrchestrator:
 
         if mode == "reuse_existing_geology":
             reused = load_existing_geology_result(source_dir, inversion_result)
+            save_recovered_geology_metadata(reused, output_dir)
             unit_defs_path = geo_cfg.get("unit_defs_csv")
             if unit_defs_path and Path(str(unit_defs_path)).is_file():
                 rows = _read_unit_defs_rows(Path(str(unit_defs_path)))
