@@ -133,8 +133,9 @@ def configure(payload):
         raise ValueError("New inversion needs a full-mode configuration. Remove the existing-result folder to avoid reusing it.")
     if task in {"inspect", "interpret"} and mode != "interpret_existing":
         raise ValueError("This task needs an existing inversion folder or an interpret-existing configuration.")
-    if task == "interpret" and not payload.get("api_key"):
-        raise ValueError("AI interpretation requires a session provider key.")
+    from .providers import ai_enabled
+    if task == "interpret" and not ai_enabled(payload):
+        raise ValueError("AI interpretation requires a session provider key or a configured CLI provider.")
     if task in {"inspect", "invert"}:
         cfg["run"].update(write_reports=False, review_enabled=False)
     elif task == "interpret":

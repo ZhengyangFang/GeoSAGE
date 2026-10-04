@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: geohang/PyHydroGeophysX
-          ref: e8c0c5cec1e4bb6cb4bdcbfabf69f279814d0ac2
+          ref: 098a61784a703db269df50f40e23b069afe8863b
           path: .upstream-phgx
           sparse-checkout: PyHydroGeophysX
       - uses: actions/setup-python@v5
@@ -42,7 +42,7 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: python -m pip install -c constraints-tested.txt ".[dev]" ./.upstream-phgx
-      - run: python -m pytest tests/test_studio_integration.py tests/test_studio_validation.py tests/test_studio_experience.py tests/test_studio_task_regressions.py tests/test_studio_handoffs.py -q
+      - run: python -m pytest tests/test_studio_integration.py tests/test_studio_validation.py tests/test_studio_experience.py tests/test_studio_task_regressions.py tests/test_studio_handoffs.py tests/test_studio_cli.py -q
 
   studio-desktop:
     strategy:
@@ -62,11 +62,12 @@ jobs:
           # Companion implementation pending upstream review. Keep the
           # unmodified-upstream compatibility job above as a separate check.
           repository: ZhengyangFang/PyHydroGeophysX
-          ref: 7e7529f68e5c98131c62f7a569617823b7aa78ab
+          ref: 08eb2831099feafc741df5dfc99135e6040dc4db
           path: .upstream-phgx
           sparse-checkout: |
             PyHydroGeophysX
             tests
+            examples/data/EM/synthetic_tem_lci
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -81,4 +82,6 @@ jobs:
           .upstream-phgx/tests/test_assistant_desktop_extensions.py
           .upstream-phgx/tests/test_scientific_sections.py
           .upstream-phgx/tests/test_saved_result_previews.py
-          .upstream-phgx/tests/test_studio_diagnostics.py -q
+          .upstream-phgx/tests/test_studio_diagnostics.py
+          .upstream-phgx/tests/test_cli_providers.py
+          .upstream-phgx/tests/test_cli_setup.py -q

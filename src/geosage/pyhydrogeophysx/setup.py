@@ -198,8 +198,6 @@ class WorkflowSetup(QWidget):
         missing = [str(p) for p in required if not p.is_file()]
         if missing:
             raise ValueError("Missing input files: " + "; ".join(missing))
-        if self.needs_ai and not payload.get("api_key"):
-            raise ValueError("Configure an AI provider in Assistant settings, then start again.")
         return payload
 
     def refresh_preview(self):

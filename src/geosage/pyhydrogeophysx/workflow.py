@@ -12,7 +12,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     from PyHydroGeophysX.agents.runtime.modes import step_by_step
     from PyHydroGeophysX.agents.assistants.geosage.workflow import CONTROLLER_PROMPT
     from geosage.multi_agent_runner import _redact_trace_value
-    from .providers import StudioLLM
+    from .providers import StudioLLM, ai_enabled, provider_id
     from .tools import fingerprint
     from .lifecycle import checkpoint, plan_for, tools_for
 
@@ -20,13 +20,9 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         raise ValueError("Describe the exploration objective or requested analysis.")
     if payload.get("step_mode") and approve is None:
         raise ValueError("Step-by-step mode needs an approval callback; no work was started.")
-    provider = {"anthropic": "claude"}.get(
-        payload.get("provider"), payload.get("provider") or "openai"
-    )
-    if provider not in {"openai", "claude"}:
-        raise ValueError(f"Unsupported Studio provider: {provider}")
+    provider = provider_id(payload)
     cfg = configure(payload)
-    use_ai = bool(payload.get("api_key")) and payload.get("studio_task") not in {"inspect", "invert"}
+    use_ai = ai_enabled(payload)
     output = Path(payload["output_dir"]).expanduser().resolve()
     if output.exists():
         bootstrap = {"UNSAVED", "activity.log", "steering.jsonl"}
@@ -45,6 +41,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "api_key": payload.get("api_key") if use_ai else None,
         "model": payload.get("model"),
         "llm_provider": provider,
+        "use_ai": use_ai,
         "ask_user": approve,
         "progress": progress,
     }
@@ -82,7 +79,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     drive(
         ctx,
         tools=run_tools,
-        ask=ask if settings["api_key"] else None,
+        ask=ask if use_ai else None,
         progress_callback=progress,
         on_step=step_by_step(approve) if payload.get("step_mode") else None,
         on_event=emit,

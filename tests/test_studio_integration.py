@@ -144,10 +144,14 @@ def test_offline_adapter_never_uses_environment_key(monkeypatch):
 
 
 @pytest.mark.parametrize("decision", ["ACCEPT", "REVISE_REPORT", "INSUFFICIENT_EVIDENCE"])
-def test_report_and_review_are_distinct_approved_stages(tmp_path, monkeypatch, decision):
+@pytest.mark.parametrize("provider", ["openai", "codex_cli", "claude_code"])
+def test_report_and_review_are_distinct_approved_stages(tmp_path, monkeypatch, decision, provider):
     from geosage.multi_agent_runner import MultiAgentOrchestrator
     from geosage.pyhydrogeophysx import tools, providers
     from test_review_loop import _FakeLLM
+
+    if provider not in ASSISTANT.providers:
+        pytest.skip("Installed host does not provide this model backend")
 
     fake = _FakeLLM(decision)
     engine = MultiAgentOrchestrator(llm=fake, vision_client=object())
@@ -159,7 +163,8 @@ def test_report_and_review_are_distinct_approved_stages(tmp_path, monkeypatch, d
         lambda *a, **kw: json.dumps({"tool": next(order), "why": "Test stage"}),
     )
     payload = archived_payload(tmp_path)
-    payload.update(api_key="test-session-credential", step_mode=True)
+    payload.update(provider=provider, studio_task="interpret", step_mode=True,
+                   api_key="test-session-credential" if provider == "openai" else None)
 
     def approve(event):
         if event["tool"] == "write_report":
@@ -173,6 +178,7 @@ def test_report_and_review_are_distinct_approved_stages(tmp_path, monkeypatch, d
     assert result["review_decision"] == decision
     assert result["status"] == ("success" if decision == "ACCEPT" else "needs_review")
     assert len(fake.review_prompts) == 1
+    assert result["completion"]["interpretation"] == "generated"
     assert "test-session-credential" not in json.dumps(result)
     for path in Path(payload["output_dir"]).rglob("*.json"):
         assert "test-session-credential" not in path.read_text(encoding="utf-8")

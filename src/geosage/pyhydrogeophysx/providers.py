@@ -2,26 +2,51 @@
 
 from types import SimpleNamespace
 
+from PyHydroGeophysX.llm import providers as host_providers
+
+# Older hosts still support API-backed workflows. Advertise CLI providers only
+# when the installed host actually supplies those adapters.
+CLI_PROVIDERS = frozenset(getattr(host_providers, "CLI_PROVIDER_IDS", ()))
+STUDIO_PROVIDERS = ("openai", "anthropic", *sorted(CLI_PROVIDERS))
+
+
+def provider_id(settings):
+    """Resolve the desktop and agent spellings without consulting credentials."""
+    value = settings.get("provider") or settings.get("llm_provider") or "openai"
+    value = host_providers.normalise_provider_id(value)
+    if value not in STUDIO_PROVIDERS:
+        raise ValueError(f"Unsupported Studio provider: {value}")
+    return "claude" if value == "anthropic" else value
+
+
+def ai_enabled(settings):
+    """Explicit local tasks stay offline, even with a saved CLI login."""
+    if settings.get("use_ai") is False or settings.get("studio_task") in {"inspect", "invert"}:
+        return False
+    return bool(settings.get("api_key")) or provider_id(settings) in CLI_PROVIDERS
+
 
 class StudioLLM:
     """The small chat interface used by GeoSAGE, backed by a host BaseAgent.
 
-    No key means no network calls, even if the process has provider keys in its
-    environment. Session credentials never enter serialized configuration.
+    API providers require an explicit session key; CLI providers use the host's
+    existing login bridge. Local tasks never call either backend. Session
+    credentials never enter serialized configuration.
     """
 
     def __init__(self, settings):
-        self.api_key = settings.get("api_key")
+        self.provider = provider_id(settings)
+        self.api_key = None if self.provider in CLI_PROVIDERS else settings.get("api_key")
         self.model = settings.get("model")
-        self.provider = settings.get("llm_provider", "openai")
+        self.enabled = ai_enabled(settings)
         self._agent = None
         self.client = SimpleNamespace(
             chat=SimpleNamespace(completions=SimpleNamespace(create=self._create))
         )
 
     def query(self, prompt, system_message=None, temperature=0.0, max_tokens=8000, on_text=None):
-        if not self.api_key:
-            raise RuntimeError("Configure a session API key in the Studio assistant panel.")
+        if not self.enabled:
+            raise RuntimeError("AI is disabled for this task or no session API key / CLI provider is configured.")
         if self._agent is None:
             from PyHydroGeophysX.agents.base_agent import BaseAgent
 
@@ -41,7 +66,9 @@ class StudioLLM:
                 on_text=on_text,
             )
         except Exception as exc:
-            detail = str(exc).replace(str(self.api_key), "[REDACTED]")
+            detail = str(exc)
+            if self.api_key:
+                detail = detail.replace(str(self.api_key), "[REDACTED]")
             raise RuntimeError(f"Studio provider failed: {detail}") from None
         if not isinstance(response, str) or not response.strip():
             raise RuntimeError("Studio provider returned an empty text response.")

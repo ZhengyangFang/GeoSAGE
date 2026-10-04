@@ -8,7 +8,8 @@ not introduce a second desktop application or replace the inversion kernel.
 ## Current compatibility
 
 The adapter targets the assistant entry-point API in PyHydroGeophysX 0.5.0,
-tested against upstream commit `e8c0c5cec1e4bb6cb4bdcbfabf69f279814d0ac2`.
+paired with upstream commit `098a61784a703db269df50f40e23b069afe8863b`
+and the accompanying host integration branch.
 Use the source checkouts while this integration is under review: a release
 carrying the same version number may predate that API.
 
@@ -127,7 +128,8 @@ fixes the beta-estimation seed in the test only and compares both entry points.
 
 Choose **Interpret existing results · with AI**, enter your objective and select
 **Generate interpretation**. The Assistant panel opens for provider configuration
-when needed. Starting after configuration uses the same **Auto to report** route. The host's OpenAI or Anthropic client supplies the controller
+when needed. Starting after configuration uses the same **Auto to report** route.
+The host's API client or authenticated CLI provider supplies the controller
 and existing GeoSAGE report agents. The workflow has six separate dependency-bound
 stages: prepare data, compile priors, inversion/reuse, geological model, draft,
 review. Approval occurs before each stage, including before writing and reviewing.
@@ -135,8 +137,20 @@ Generic Gravity/Magnetics and Joint Inversion module forms are independent
 tools; editing their fields does not edit the GeoSAGE JSON configuration. Those
 pages display an explicit independence notice while GeoSAGE is selected.
 
+In **Assistant → Settings**, choose OpenAI/Anthropic with a session API key, or
+**Codex CLI** / **Claude Code CLI** with the host's existing setup and sign-in
+controls. CLI providers use their own saved login and need no copied API key.
+GeoSAGE does not install another CLI, read login tokens, or launch its own CLI
+subprocess. Older hosts without CLI support expose the API options only.
+
+Both CLI providers support **Auto to report** and **Step-by-step assistance**.
+Workflow stage approval is independently controlled by **Approve each step
+before it runs**. The task button waits for the host's login readiness; provider
+failures remain errors, rather than silently producing an offline interpretation.
+The current upstream CLI bridge accepts text, not screenshot/image input.
+
 Provider keys are session settings, never configuration fields. The offline
-button ignores provider settings and environment keys. Local reference documents
+button ignores provider settings, saved CLI logins and environment keys. Local reference documents
 use GeoSAGE's existing context handling; Studio's additional RAG/MCP retrieval
 is not implemented for this workflow, so those controls are hidden for GeoSAGE.
 The selected task determines whether report generation and review are enabled,

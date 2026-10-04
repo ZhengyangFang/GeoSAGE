@@ -50,6 +50,26 @@ def test_hidden_ai_goal_is_not_reused_for_local_task(app):
     assert 'Explain my ore target' not in setup.request()
     setup.close()
 
+
+@pytest.mark.parametrize('provider', ['codex_cli', 'claude_code'])
+def test_cli_provider_survives_preflight_and_worker_payload(page, tmp_path, monkeypatch, provider):
+    if provider not in ASSISTANT.providers:
+        pytest.skip('Installed host does not provide CLI backends')
+    setup = page._workflow_setup
+    setup.task.setCurrentIndex(setup.task.findData('interpret'))
+    page._inputs = archived_payload(tmp_path)['inputs']
+    page._refresh_inputs()
+    page._ai_settings = {'provider': provider, 'model': 'default', 'api_key': None}
+    page._request_text = setup.request()
+    started = []
+    monkeypatch.setattr(OneClickWorker, 'start', lambda self: started.append(json.loads(self._payload)))
+    page._start(step_mode=True)
+    assert len(started) == 1, page.status.text()
+    assert started[0]['provider'] == provider
+    assert started[0]['api_key'] is None
+    assert started[0]['studio_task'] == 'interpret'
+    assert started[0]['step_mode'] is True
+
 def test_ai_task_enables_interpretation_despite_local_config_flags(tmp_path):
     payload = archived_payload(tmp_path)
     payload.update(studio_task='interpret', api_key='test-only', config={
@@ -69,6 +89,14 @@ def test_save_after_project_change_does_not_crash(page):
     page._save_current_run()
     assert 'saved' not in page.result_state.text().lower() or 'not saved' in page.result_state.text().lower()
     assert not page.save_result.isEnabled()
+
+
+def test_upstream_report_preview_opens_the_integrated_results_tab(page, tmp_path):
+    report = tmp_path / 'summary.md'
+    report.write_text('# Local evidence\nReview these models.', encoding='utf-8')
+    page._show_report(report)
+    assert page.tabs.currentWidget() is page._result_page
+    assert 'Review these models.' in page.report.toPlainText()
 
 def test_completed_run_has_unified_results_and_external_save_stays_in_sync(page, tmp_path):
     from geosage.pyhydrogeophysx.workflow import run

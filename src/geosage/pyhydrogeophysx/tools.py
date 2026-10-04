@@ -9,6 +9,7 @@ import shutil
 from PyHydroGeophysX.agents.runtime.tools import Tool
 
 from .configuration import FILE_ROLES
+from .providers import ai_enabled
 
 
 def _orchestrator(ctx):
@@ -185,7 +186,7 @@ def build_quasi_geology(ctx):
 
 def write_report(ctx):
     geo = ctx.get("geo_model")
-    if ctx.settings.get("api_key") and ctx.config["run"].get("write_reports", True):
+    if ai_enabled(ctx.settings) and ctx.config["run"].get("write_reports", True):
         draft = _orchestrator(ctx).write_report_draft(
             ctx.config, geo["workflow"], ctx.goal, geo["prepared"]
         )

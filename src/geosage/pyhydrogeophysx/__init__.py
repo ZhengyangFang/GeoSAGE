@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from PyHydroGeophysX.agents.assistants.geosage import ASSISTANT as _SCAFFOLD
+from .providers import STUDIO_PROVIDERS
 
 ASSISTANT = replace(
     _SCAFFOLD,
@@ -10,6 +11,7 @@ ASSISTANT = replace(
     tools="geosage.pyhydrogeophysx.tools:TOOLS",
     status="ready",
     status_note="",
+    providers=STUDIO_PROVIDERS,
     requires_packages=("geosage", "simpeg"),
     persona=_SCAFFOLD.persona
     + (
