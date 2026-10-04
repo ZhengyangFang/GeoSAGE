@@ -1,6 +1,7 @@
 """Studio workflow contract, with truthful outcomes and the shared runtime."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from .configuration import configure
@@ -25,6 +26,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     if provider not in {"openai", "claude"}:
         raise ValueError(f"Unsupported Studio provider: {provider}")
     cfg = configure(payload)
+    use_ai = bool(payload.get("api_key")) and payload.get("studio_task") not in {"inspect", "invert"}
     output = Path(payload["output_dir"]).expanduser().resolve()
     if output.exists():
         bootstrap = {"UNSAVED", "activity.log", "steering.jsonl"}
@@ -40,10 +42,11 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     with reservation.open("x", encoding="utf-8") as handle:
         handle.write("GeoSAGE owns this run. Start a new output directory to run again.\n")
     settings = {
-        "api_key": payload.get("api_key"),
+        "api_key": payload.get("api_key") if use_ai else None,
         "model": payload.get("model"),
         "llm_provider": provider,
         "ask_user": approve,
+        "progress": progress,
     }
     ctx = RunContext(
         goal=cfg["user_request"], config=cfg, output_dir=str(output), settings=settings
@@ -60,13 +63,19 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
             on_event(event)
 
     model = StudioLLM(settings)
+    run_tools = dict(TOOLS)
+    if cfg["run"]["execution_mode"] == "interpret_existing":
+        run_tools["run_joint_inversion"] = replace(TOOLS["run_joint_inversion"], label="Load existing models")
+    if not use_ai or not cfg["run"].get("write_reports", True):
+        run_tools["write_report"] = replace(TOOLS["write_report"], label="Export numerical summary")
+        run_tools["review_report"] = replace(TOOLS["review_report"], label="Record review status")
 
     def ask(prompt, on_text=None):
         return model.query(prompt, temperature=0, max_tokens=500, on_text=on_text)
 
     drive(
         ctx,
-        tools=TOOLS,
+        tools=run_tools,
         ask=ask if settings["api_key"] else None,
         progress_callback=progress,
         on_step=step_by_step(approve) if payload.get("step_mode") else None,
@@ -125,6 +134,8 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
                             "Susceptibility (SI)": "viridis",
                         },
                         "z_convention": "elevation, positive up",
+                        "linked_sections": True,
+                        "field_metadata": exports.get("viewer_fields", {}),
                     },
                 }
             )
@@ -149,6 +160,12 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "artifacts": artifacts,
         "source_files_unchanged": unchanged,
         "review_decision": ctx.get("review_decision"),
+        "iterations": ctx.settings.get("iterations", []),
+        "completion": {
+            "numerical": "complete" if ctx.has("geo_model") else "incomplete",
+            "interpretation": "generated" if use_ai and ctx.has("draft_report") and not (ctx.get("draft_report") or {}).get("offline") else "not_run",
+            "review": ctx.get("review_decision") or "not_run",
+        },
         "summary": (geo.get("prepared") or {}).get("result_summary", {}),
     }
     audit = {

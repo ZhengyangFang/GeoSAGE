@@ -127,7 +127,17 @@ def run_joint_inversion(ctx):
     cfg["run"]["run_geology_model"] = False
     if cfg["run"]["execution_mode"] == "full" and Path(cfg["project"]["output_dir"]).exists():
         raise FileExistsError("Model output folder already exists; start a new Studio run.")
-    result = run_workflow(cfg)
+    def report_iteration(event):
+        ctx.settings.setdefault("iterations", []).append(event)
+        progress = ctx.settings.get("progress")
+        if progress:
+            detail = f'Iteration {event["iteration"]}/{event["max_iterations"]} · data misfit {event["data_misfit"]}'
+            try:
+                progress("Joint inversion", 0.0, detail, "joint_inversion")
+            except TypeError:
+                progress("Joint inversion", 0.0, detail)
+
+    result = run_workflow(cfg, progress_callback=report_iteration)
     effective = result["effective_config"]
     effective["run"] = deepcopy(ctx.config["run"])
     effective["geology"] = deepcopy(ctx.config["geology"])

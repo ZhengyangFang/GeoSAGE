@@ -39,6 +39,9 @@ ASSISTANT = replace(
         "Compare density, susceptibility and geological groups in the model viewer",
     ),
     _cache={},
+    **({"workflow_setup": "geosage.pyhydrogeophysx.setup:WorkflowSetup",
+        "retrieval": (), "focused_workspace": True}
+       if "workflow_setup" in _SCAFFOLD.__dataclass_fields__ else {}),
     **({"offline_workflow": True} if "offline_workflow" in _SCAFFOLD.__dataclass_fields__ else {}),
 )
 

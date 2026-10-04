@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 
 
@@ -119,6 +120,17 @@ def configure(payload):
     if not mode:
         mode = "interpret_existing" if not cfg["run"].get("run_inversion", True) else "full"
     cfg["run"]["execution_mode"] = mode
+    task = payload.get("studio_task")
+    if task not in {None, "inspect", "invert", "interpret"}:
+        raise ValueError(f"Unknown GeoSAGE task: {task}")
+    if task == "invert" and mode != "full":
+        raise ValueError("New inversion needs a full-mode configuration. Remove the existing-result folder to avoid reusing it.")
+    if task in {"inspect", "interpret"} and mode != "interpret_existing":
+        raise ValueError("This task needs an existing inversion folder or an interpret-existing configuration.")
+    if task == "interpret" and not payload.get("api_key"):
+        raise ValueError("AI interpretation requires a session provider key.")
+    if task in {"inspect", "invert"}:
+        cfg["run"].update(write_reports=False, review_enabled=False)
     if mode not in {"full", "interpret_existing"}:
         raise ValueError(f"Unsupported execution mode: {mode}")
     if mode == "full":
@@ -135,6 +147,13 @@ def configure(payload):
             raise ValueError(
                 "A full inversion needs explicit min_e/max_e/min_n/max_n in the configuration."
             )
+        try:
+            bounds = [float(region[k]) for k in ("min_e", "max_e", "min_n", "max_n")]
+            valid_bounds = all(math.isfinite(v) for v in bounds) and bounds[0] < bounds[1] and bounds[2] < bounds[3]
+        except (TypeError, ValueError):
+            valid_bounds = False
+        if not valid_bounds:
+            raise ValueError("Region bounds must be finite numbers with minimum below maximum.")
     else:
         source = source or project.get("output_dir")
         if not source or not Path(source).is_dir():

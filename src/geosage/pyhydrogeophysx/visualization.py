@@ -16,6 +16,7 @@ def export_results(workflow, output):
     from matplotlib.colors import BoundaryNorm, ListedColormap
     from matplotlib.figure import Figure
     from matplotlib import colormaps, rc_context
+    from matplotlib.colors import to_hex
     from geosage.validation import require_labels, require_real_finite
 
     inv = workflow["inversion_result"]
@@ -44,6 +45,7 @@ def export_results(workflow, output):
         "array_order": "x,y,z; VTK cells flattened in Fortran order",
         "shape": list(shape),
         "fields": {},
+        "viewer_fields": {},
     }
     for name, array, units, _ in fields:
         finite = array[np.isfinite(array)]
@@ -55,6 +57,12 @@ def export_results(workflow, output):
             "max": float(finite.max()),
             "finite_cells": int(finite.size),
         }
+        vtk_name = "Density contrast (g/cm3)" if name == "Density contrast" else "Susceptibility (SI)"
+        limits = [float(finite.min()), float(finite.max())]
+        if name == "Density contrast":
+            bound = max(abs(limits[0]), abs(limits[1]), 1e-12)
+            limits = [-bound, bound]
+        metadata["viewer_fields"][vtk_name] = {"limits": limits, "units": units}
     ids = geo.get("geo_id_3d")
     if ids is not None:
         ids = np.asarray(ids)
@@ -67,6 +75,12 @@ def export_results(workflow, output):
         grid.cell_data["Geo ID"] = ids.ravel(order="F")
         grid.cell_data["Unit ID"] = np.asarray(geo["unit_id_3d"]).ravel(order="F")
         metadata["geo_names"] = {str(k): v for k, v in geo.get("geo_defs", {}).items()}
+        for field_name, labels in (("Geo ID", ids), ("Unit ID", unit_ids)):
+            metadata["viewer_fields"][field_name] = {
+                "colors": {str(int(v)): ("#efeff5" if v == 0 else to_hex(colormaps["tab20"]((int(v) - 1) % 20))) for v in np.unique(labels)},
+                "names": metadata["geo_names"] if field_name == "Geo ID" else {},
+                "units": "category",
+            }
         fields.append(("Geological groups", ids, "Geo ID", "tab20"))
     model_path = directory / "geosage_models.vtk"
     directory.mkdir(exist_ok=False)
@@ -124,15 +138,15 @@ def export_results(workflow, output):
             if unit == "Geo ID":
                 unique = np.unique(values)
                 # Compact colour positions support non-contiguous geological IDs.
-                colors = colormaps["tab20"](np.linspace(0, 1, max(1, len(unique))))
-                if 0 in unique:
-                    colors[np.flatnonzero(unique == 0)[0]] = [0.94, 0.94, 0.96, 1]
+                colors = [metadata["viewer_fields"]["Geo ID"]["colors"][str(int(v))] for v in unique]
                 kwargs = {
                     "cmap": ListedColormap(colors),
                     "norm": BoundaryNorm(np.arange(len(unique) + 1) - 0.5, len(unique)),
                 }
             else:
-                kwargs.update(vmin=float(np.nanmin(values)), vmax=float(np.nanmax(values)))
+                key = "Density contrast (g/cm3)" if title == "Density contrast" else "Susceptibility (SI)"
+                limits = metadata["viewer_fields"][key]["limits"]
+                kwargs.update(vmin=limits[0], vmax=limits[1])
             for ax, (plane, x, y, xlabel, ylabel, subtitle) in zip(axes, views):
                 data = (
                     np.searchsorted(unique, plane)
@@ -244,4 +258,5 @@ def export_results(workflow, output):
         "model": str(model_path),
         "metadata": str(directory / "model_metadata.json"),
         "figures": figures,
+        "viewer_fields": metadata["viewer_fields"],
     }

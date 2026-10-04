@@ -291,7 +291,7 @@ def _write_json(path: Path, payload: Dict[str, Any]) -> None:
 # 3. Main entry point: run_workflow
 # ==========================
 
-def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
+def run_workflow(config: Union[str, Path, Dict[str, Any]], *, progress_callback=None) -> Dict[str, Any]:
     """Run a full inversion or a read-only interpretation of archived results."""
 
     cfg = load_config(config)
@@ -400,6 +400,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
             IRLS_mindelta=inv_cfg["irls"]["IRLS_mindelta"],
             IRLSbeta_tol=inv_cfg["irls"]["IRLSbeta_tol"],
             make_plots=run_cfg.get("make_plots", True),
+            progress_callback=progress_callback,
         )
         source_manifest = build_source_manifest(source_dir)
         # The solver can resolve aliases, gravity components and region bounds.

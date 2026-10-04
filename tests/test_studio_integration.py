@@ -215,3 +215,6 @@ def test_full_adapter_matches_direct_synthetic_inversion(tmp_path, monkeypatch):
         np.testing.assert_allclose(adapted[key], direct[key], rtol=1e-10, atol=1e-12)
     assert "Gravity data fit" in result["exports"]["figures"]
     assert "Magnetics data fit" in result["exports"]["figures"]
+    assert result["iterations"]
+    assert result["iterations"][0]["iteration"] >= 1
+    assert "data_misfit" in result["iterations"][0]

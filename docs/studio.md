@@ -38,13 +38,14 @@ CUDA and the host's other domain extras are not required for GeoSAGE.
 1. Open or create a **Project** outside the source data and inversion folders.
 2. Select **GeoSAGE** in the assistant picker. In **Data & reports → Data**, add
    the folder with role **Existing GeoSAGE inversion folder**.
-3. Select **Run without AI**. Enable **Approve each step before it runs** if
+3. Choose **Inspect existing results · local**, use **Check inputs & preview configuration**,
+   then select **Open results**. Enable **Approve each step before it runs** if
    you want to examine each stage. Stop preserves partial outputs in this run.
 4. Inspect **Results & report**, or **Saved Results → Visualization**. The VTK
    property selector offers density contrast, susceptibility, Geo ID and Unit ID;
    the clipping plane exposes interior cells. Figures remain available without
    a compatible OpenGL renderer.
-5. Use **Save to Project** to retain the run in Studio's history across sessions.
+5. Use **Save this run to Project** to retain the run in Studio's history across sessions.
    An unsaved run's files exist locally but are not part of saved history.
 
 At minimum, an archive needs:
@@ -64,9 +65,12 @@ choose another geological mode or explicit targets.
 
 ## Run a new inversion
 
-Add a **GeoSAGE configuration (JSON)** with an explicit project name, region,
+Choose **Run a new inversion · local**. Add a **GeoSAGE configuration (JSON)** with an explicit project name, region,
 survey and inversion settings. Existing configs retain their workspace-relative
 path rules. The adapter does not infer physical settings from a chat request.
+Use **Create / edit inversion configuration** to edit physical settings for this run;
+imported advanced settings are retained and the original JSON is not modified.
+**View all resolved parameters** shows the complete effective configuration.
 Supply an input folder with these names, or assign the five individual roles:
 
 | File | Required contents |
@@ -89,8 +93,9 @@ fixes the beta-estimation seed in the test only and compares both entry points.
 
 ## Interpretation and review
 
-With a provider configured in the Studio assistant panel, send your goal using
-**Auto to report**. The host's OpenAI or Anthropic client supplies the controller
+Choose **Interpret existing results · with AI**, enter your objective and select
+**Generate interpretation**. The Assistant panel opens for provider configuration
+when needed. Starting after configuration uses the same **Auto to report** route. The host's OpenAI or Anthropic client supplies the controller
 and existing GeoSAGE report agents. The workflow has six separate dependency-bound
 stages: prepare data, compile priors, inversion/reuse, geological model, draft,
 review. Approval occurs before each stage, including before writing and reviewing.
@@ -100,7 +105,7 @@ tools; editing their fields does not edit the GeoSAGE JSON configuration.
 Provider keys are session settings, never configuration fields. The offline
 button ignores provider settings and environment keys. Local reference documents
 use GeoSAGE's existing context handling; Studio's additional RAG/MCP retrieval
-is not implemented for this workflow and requesting it is reported as a limitation.
+is not implemented for this workflow, so those controls are hidden for GeoSAGE.
 Do not put credentials in JSON configs.
 
 An offline summary is always `needs_review` / `NOT_REVIEWED`. A revised report
@@ -109,14 +114,42 @@ or failed dependency chain is `incomplete`. No live paid-provider call is needed
 by the test suite; provider connectivity and scientific interpretation quality
 still require a separate real-provider acceptance run.
 
+## Workspace and result exploration
+
+GeoSAGE opens with the workflow and relevant tools in focus. **Assistant** in the
+toolbar opens chat; **View → Show all processing tools** restores the full module list. Logs remain
+available from View. AQUAH keeps its normal workflow and retrieval controls.
+
+A run shows separate numerical, interpretation and review states. Local runs do
+not claim an AI review. Solver iterations and data misfit are reported as they
+arrive; the activity bar does not imply a measured percentage or time estimate.
+**View models & compare runs** opens the current result, even before saving it.
+Save it explicitly to retain history after closing the application.
+
+In the model viewer, **Linked sections & values** shows plan, east–elevation and
+north–elevation sections. Enter physical coordinates, use arrow keys to step
+between cells, or click a section to move the crosshairs. Coordinates snap to
+actual cell centres, including on nonuniform meshes. Large plot axes use explicitly
+labelled kilometres to keep ticks legible; coordinate controls always use metres. Right-click a point in the
+3D model to inspect the nearest cell. Property changes keep the selected cell,
+camera and clipping plane. Linked sections remain available without OpenGL
+when PyVista is installed.
+
+Select two runs with Ctrl-click, then **Compare two models**. Matching rectilinear
+grids share a colour scale and show A, B and B − A at the selected elevation.
+Different coordinates are rejected rather than silently resampled. Comparisons
+cover continuous properties; geological IDs are categories, so subtracting them
+is not presented as a scientific difference.
+
 ## Scientific display conventions
 
 - Mesh coordinates are metres; **z is elevation, positive up**, not depth below
   the ground surface. Depth claims require the topography-based evidence audit.
 - VTK uses the original rectilinear edges and Fortran cell ordering; arrays are
   neither resampled nor reordered in the source archive.
-- Density contrast uses g/cm³, susceptibility SI. Sparse geological identifiers
-  are categorical labels, not a continuous measurement.
+- Density contrast uses g/cm³ with a scale symmetric about zero, susceptibility SI. Sparse geological identifiers
+  are categorical labels, not a continuous measurement. Category colours are shared
+  between figures, sections and 3D; label 0 has a neutral background colour.
 - Orthogonal sections use cell edges and shared limits for each property.
   Data-fit maps share observed/predicted limits, use `observed − predicted`
   residuals, and report RMSE in mGal (gravity gradients: Eötvös) or nT.

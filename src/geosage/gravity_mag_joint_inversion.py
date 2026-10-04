@@ -126,6 +126,7 @@ def run_joint_inversion(
     IRLS_mindelta: float = DEFAULT_IRLS_MINDELTA,
     IRLSbeta_tol: float = DEFAULT_IRLS_BETA_TOL,
     make_plots: bool = True,
+    progress_callback=None,
 ) -> dict:
     """
     Run the full gravity + magnetic joint inversion workflow.
@@ -989,6 +990,20 @@ def run_joint_inversion(
         save_model,
         update_jacobi,
     ]
+    if progress_callback is not None:
+        class IterationProgress(directives.InversionDirective):
+            """Observe completed iterations without changing the objective or model."""
+
+            def endIter(self):
+                try:
+                    progress_callback({"iteration": int(self.opt.iter),
+                                       "max_iterations": int(maxGNCG),
+                                       "data_misfit": np.asarray(self.invProb.phi_d).tolist()})
+                except Exception:
+                    # A detached GUI cannot interrupt scientific computation.
+                    pass
+
+        directives_list.append(IterationProgress())
 
     inv = inversion.BaseInversion(inv_prob, directives_list)
 
