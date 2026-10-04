@@ -1,4 +1,4 @@
-# Tested Windows Python 3.13 scientific environment.
+# Windows Python 3.13 baseline, with Python 3.11 compatibility pins for CI.
 # Optional: pip install -c constraints-tested.txt ".[dev]"
 numpy==2.3.5
 scipy==1.17.0
@@ -14,7 +14,9 @@ scikit-learn==1.8.0
 matplotlib==3.10.8
 pyvista==0.47.0
 vtk==9.5.2
-rasterio==1.5.0
+# Rasterio 1.5 requires Python >=3.12.
+rasterio==1.4.4; python_version < "3.12"
+rasterio==1.5.0; python_version >= "3.12"
 pyproj==3.7.2
 openai==2.17.0
 pypdf==6.7.0
