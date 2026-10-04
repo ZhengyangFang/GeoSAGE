@@ -53,6 +53,15 @@ Python module entry points are also available, for example
 `python -m geosage.runner --config configs/hannah_geology_only.json`.
 Imports use the package name: `from geosage.runner import run_workflow`.
 
+## Desktop Studio integration
+
+GeoSAGE can run as an optional assistant in PyHydroGeophysX Studio, reusing its
+workflow UI, light/dark theme, step approvals and result viewers. The integration
+supports new configured inversions and exact reuse of archived models, with
+offline numerical summaries or provider-backed interpretation and review.
+See the [Studio integration guide](docs/studio.md) for the tested source version,
+installation, supported data roles and current limitations.
+
 ## Work with local data
 
 Open notebooks from `notebooks/` after installing the package. Paths are resolved

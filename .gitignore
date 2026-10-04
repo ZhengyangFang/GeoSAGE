@@ -67,6 +67,9 @@ mesh/
 *.tiff
 *.npy
 *.npz
+*.vtk
+*.vtu
+*.vtr
 *.h5
 *.hdf5
 *.msh

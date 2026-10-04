@@ -50,6 +50,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+studio = ["PyHydroGeophysX[desktop,desktop-3d]>=0.5,<0.6"]
 notebooks = [
     "cartopy>=0.23",
     "ipykernel>=6.29",
@@ -74,6 +75,10 @@ dev = [
 geosage-run = "geosage.runner:main"
 geosage-agents = "geosage.multi_agent_runner:main"
 geosage-compare = "geosage.compare_interpretations:main"
+geosage-studio = "geosage.pyhydrogeophysx.launcher:main"
+
+[project.entry-points."pyhydrogeophysx.assistants"]
+geosage = "geosage.pyhydrogeophysx:ASSISTANT"
 
 [tool.setuptools.packages.find]
 where = ["src"]

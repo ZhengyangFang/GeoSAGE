@@ -2623,14 +2623,14 @@ class MultiAgentOrchestrator:
             "agent_trace_path": str(agent_trace_path),
         }
 
-    def _write_configured_report(
+    def write_report_draft(
         self,
         cfg: Dict[str, Any],
         workflow_result: Dict[str, Any],
         user_request: str,
         prepared: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Generate draft/evidence/review/final artifacts in one interpretation folder."""
+        """Write a draft independently so host workflows can approve the review stage."""
 
         prepared = prepared or self._prepare_interpretation_artifacts(cfg, workflow_result)
         output_dir = prepared["output_dir"]
@@ -2675,6 +2675,26 @@ class MultiAgentOrchestrator:
         draft_path = report_dir / "draft_report.md"
         draft_path.write_text(draft, encoding="utf-8")
 
+        return {"prepared": prepared, "draft": draft, "draft_path": draft_path,
+                "fig_paths": fig_paths, "allowed_figure_paths": allowed_figure_paths,
+                "removed_draft_images": removed_draft_images}
+
+    def review_report_draft(self, cfg, workflow_result, draft_artifacts):
+        """Review and publish an already-written draft, without regenerating it."""
+        prepared = draft_artifacts["prepared"]
+        output_dir = prepared["output_dir"]
+        result_summary = prepared["result_summary"]
+        slice_analysis = prepared["slice_analysis"]
+        geo_result = prepared["geo_result"]
+        target_info = prepared["target_info"]
+        context_text = prepared["context_text"]
+        inversion_result = prepared["inversion_result"]
+        draft = draft_artifacts["draft"]
+        draft_path = draft_artifacts["draft_path"]
+        report_dir = draft_path.parent
+        fig_paths = draft_artifacts["fig_paths"]
+        allowed_figure_paths = draft_artifacts["allowed_figure_paths"]
+        removed_draft_images = draft_artifacts["removed_draft_images"]
         evidence = prepared["evidence"]
         evidence_path = prepared["evidence_path"]
         final_report = draft
@@ -2780,6 +2800,11 @@ class MultiAgentOrchestrator:
             "evidence_bundle_path": str(evidence_path),
             "agent_trace_path": str(agent_trace_path),
         }
+
+    def _write_configured_report(self, cfg, workflow_result, user_request, prepared=None):
+        """Preserve the original combined report API for existing workflows."""
+        draft = self.write_report_draft(cfg, workflow_result, user_request, prepared)
+        return self.review_report_draft(cfg, workflow_result, draft)
 
     def run_from_config(
         self,
