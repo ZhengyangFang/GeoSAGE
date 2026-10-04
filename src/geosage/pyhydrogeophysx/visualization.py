@@ -10,13 +10,12 @@ from pathlib import Path
 
 
 def export_results(workflow, output):
+    import matplotlib.pyplot as plt
     import numpy as np
     import pyvista as pv
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-    from matplotlib.colors import BoundaryNorm, ListedColormap
-    from matplotlib.figure import Figure
-    from matplotlib import colormaps, rc_context
-    from matplotlib.colors import to_hex
+
+    from geosage.plotting import render_data_fit, render_model_sections, render_property_crossplot
+    from geosage.plotting.scales import category_colors, field_scale, middle_index
     from geosage.validation import require_labels, require_real_finite
 
     inv = workflow["inversion_result"]
@@ -33,8 +32,8 @@ def export_results(workflow, output):
         raise ValueError("Model shape does not match the physical mesh.")
     grid = pv.RectilinearGrid(mesh.nodes_x, mesh.nodes_y, mesh.nodes_z)
     fields = [
-        ("Density contrast", density, "g/cm³", "RdBu_r"),
-        ("Susceptibility", susceptibility, "SI", "viridis"),
+        ("Density contrast", density, "g/cm3"),
+        ("Susceptibility", susceptibility, "SI"),
     ]
     grid.cell_data["Density contrast (g/cm3)"] = density.ravel(order="F")
     grid.cell_data["Susceptibility (SI)"] = susceptibility.ravel(order="F")
@@ -47,7 +46,7 @@ def export_results(workflow, output):
         "fields": {},
         "viewer_fields": {},
     }
-    for name, array, units, _ in fields:
+    for name, array, units in fields:
         finite = array[np.isfinite(array)]
         if not finite.size:
             raise ValueError(f"{name} has no finite cells.")
@@ -57,12 +56,13 @@ def export_results(workflow, output):
             "max": float(finite.max()),
             "finite_cells": int(finite.size),
         }
-        vtk_name = "Density contrast (g/cm3)" if name == "Density contrast" else "Susceptibility (SI)"
-        limits = [float(finite.min()), float(finite.max())]
-        if name == "Density contrast":
-            bound = max(abs(limits[0]), abs(limits[1]), 1e-12)
-            limits = [-bound, bound]
-        metadata["viewer_fields"][vtk_name] = {"limits": limits, "units": units}
+        vtk_name = (
+            "Density contrast (g/cm3)" if name == "Density contrast" else "Susceptibility (SI)"
+        )
+        metadata["viewer_fields"][vtk_name] = {
+            **field_scale(array, centered=name == "Density contrast"),
+            "units": units,
+        }
     ids = geo.get("geo_id_3d")
     if ids is not None:
         ids = np.asarray(ids)
@@ -77,180 +77,105 @@ def export_results(workflow, output):
         metadata["geo_names"] = {str(k): v for k, v in geo.get("geo_defs", {}).items()}
         for field_name, labels in (("Geo ID", ids), ("Unit ID", unit_ids)):
             metadata["viewer_fields"][field_name] = {
-                "colors": {str(int(v)): ("#efeff5" if v == 0 else to_hex(colormaps["tab20"]((int(v) - 1) % 20))) for v in np.unique(labels)},
+                "colors": category_colors(labels),
                 "names": metadata["geo_names"] if field_name == "Geo ID" else {},
                 "units": "category",
             }
-        fields.append(("Geological groups", ids, "Geo ID", "tab20"))
     model_path = directory / "geosage_models.vtk"
     directory.mkdir(exist_ok=False)
     grid.save(model_path)
-    (directory / "model_metadata.json").write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
     centers = (mesh.cell_centers_x, mesh.cell_centers_y, mesh.cell_centers_z)
-    nodes = (mesh.nodes_x, mesh.nodes_y, mesh.nodes_z)
-    midpoint = tuple(n // 2 for n in shape)
+    case = inv.get("inversion_parameters", {}).get("project_name") or workflow.get(
+        "config", {}
+    ).get("project", {}).get("name", "Model")
+    k_indices = [middle_index(mesh.nodes_z)]
+    j_indices = [middle_index(mesh.nodes_y)]
     figures = {}
-    style = {
-        "font.family": "DejaVu Sans",
-        "font.size": 9,
-        "axes.labelcolor": "#1d1d1f",
-        "text.color": "#1d1d1f",
-        "axes.edgecolor": "#c7c7cc",
-        "axes.titleweight": "medium",
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "figure.facecolor": "white",
+    metadata["display"] = {
+        "implementation": "geosage.plotting.paper",
+        "preset": "adaptive",
+        "dpi": 160,
+        "range_policy": "full range per run; observations and predictions share a scale",
+        "z_indices": k_indices,
+        "y_indices": j_indices,
+        "z_positions_m": [float(centers[2][k]) for k in k_indices],
+        "y_positions_m": [float(centers[1][j]) for j in j_indices],
     }
-    with rc_context(style):
-        for title, values, unit, cmap in fields:
-            figure = Figure(figsize=(13, 4.2), layout="constrained")
-            FigureCanvasAgg(figure)
-            axes = figure.subplots(1, 3)
-            views = [
-                (
-                    values[:, :, midpoint[2]].T,
-                    nodes[0],
-                    nodes[1],
-                    "Easting (m)",
-                    "Northing (m)",
-                    f"Z elevation {centers[2][midpoint[2]]:,.1f} m",
-                ),
-                (
-                    values[:, midpoint[1], :].T,
-                    nodes[0],
-                    nodes[2],
-                    "Easting (m)",
-                    "Z elevation (m)",
-                    f"Northing {centers[1][midpoint[1]]:,.1f} m",
-                ),
-                (
-                    values[midpoint[0], :, :].T,
-                    nodes[1],
-                    nodes[2],
-                    "Northing (m)",
-                    "Z elevation (m)",
-                    f"Easting {centers[0][midpoint[0]]:,.1f} m",
-                ),
-            ]
-            kwargs = {"cmap": cmap}
-            if unit == "Geo ID":
-                unique = np.unique(values)
-                # Compact colour positions support non-contiguous geological IDs.
-                colors = [metadata["viewer_fields"]["Geo ID"]["colors"][str(int(v))] for v in unique]
-                kwargs = {
-                    "cmap": ListedColormap(colors),
-                    "norm": BoundaryNorm(np.arange(len(unique) + 1) - 0.5, len(unique)),
+    path = directory / "model_sections.png"
+    fig = render_model_sections(
+        density,
+        susceptibility,
+        ids,
+        mesh.nodes_x,
+        mesh.nodes_y,
+        mesh.nodes_z,
+        centers[2],
+        centers[1],
+        k_indices,
+        j_indices,
+        output=path,
+        dpi=160,
+        adaptive=True,
+    )
+    plt.close(fig)
+    figures["Model sections"] = str(path)
+    if ids is not None:
+        path = directory / "property_relationships.png"
+        names = geo.get("unit_defs") or {}
+        definitions = workflow.get("config", {}).get("geology", {}).get("unit_defs_csv")
+        if not names and definitions:
+            import csv
+
+            with Path(definitions).open(encoding="utf-8-sig", newline="") as handle:
+                names = {
+                    int(row["unit_id"]): {"name": row["name"]} for row in csv.DictReader(handle)
                 }
-            else:
-                key = "Density contrast (g/cm3)" if title == "Density contrast" else "Susceptibility (SI)"
-                limits = metadata["viewer_fields"][key]["limits"]
-                kwargs.update(vmin=limits[0], vmax=limits[1])
-            for ax, (plane, x, y, xlabel, ylabel, subtitle) in zip(axes, views):
-                data = (
-                    np.searchsorted(unique, plane)
-                    if unit == "Geo ID"
-                    else np.ma.masked_invalid(plane)
-                )
-                artist = ax.pcolormesh(x, y, data, shading="flat", **kwargs)
-                ax.set(xlabel=xlabel, ylabel=ylabel, title=subtitle)
-                ax.set_aspect("equal", adjustable="box")
-                ax.ticklabel_format(style="plain", useOffset=False)
-                ax.tick_params(labelsize=7)
-            bar = figure.colorbar(artist, ax=list(axes), shrink=0.8, label=unit)
-            if unit == "Geo ID":
-                bar.set_ticks(range(len(unique)), labels=[str(int(v)) for v in unique])
-            figure.suptitle(title, fontsize=14)
-            path = directory / (title.lower().replace(" ", "_") + "_slices.png")
-            figure.savefig(path, dpi=160)
-            figures[title] = str(path)
-        figure = Figure(figsize=(7, 4.5), layout="constrained")
-        FigureCanvasAgg(figure)
-        ax = figure.subplots()
-        finite = np.isfinite(density) & np.isfinite(susceptibility)
-        hist = ax.hexbin(
-            density[finite], susceptibility[finite], gridsize=65, mincnt=1, bins="log", cmap="Blues"
+        names = {int(k): (v if isinstance(v, dict) else {"name": str(v)}) for k, v in names.items()}
+        metadata["viewer_fields"]["Unit ID"]["names"] = {
+            str(k): v.get("name", "") for k, v in names.items()
+        }
+        fig = render_property_crossplot(
+            density, susceptibility, unit_ids, names, output=path, dpi=160, adaptive=True
         )
-        figure.colorbar(hist, ax=ax, label="Cells per bin (log scale)")
-        ax.set(
-            xlabel="Density contrast (g/cm³)",
-            ylabel="Susceptibility (SI)",
-            title="Physical-property distribution",
-        )
-        path = directory / "property_distribution.png"
-        figure.savefig(path, dpi=160)
+        plt.close(fig)
         figures["Physical-property distribution"] = str(path)
-        for key, title, unit in (
-            ("gravity", "Gravity", "mGal"),
-            ("magnetics", "Magnetics", "nT"),
-        ):
-            observed_path = inv.get("paths", {}).get(f"obs_{key}_ubc")
-            predicted = inv.get(f"dpred_{key}")
-            if predicted is None:
-                predicted_path = inv.get("paths", {}).get(f"dpred_{key}_npy")
-                if predicted_path and Path(predicted_path).is_file():
-                    predicted = np.load(predicted_path)
-            if not observed_path or predicted is None:
-                continue
-            # GeoSAGE's *.obs exports have five columns and no UBC header:
-            # easting, northing, elevation, observation, standard deviation.
-            observations = np.loadtxt(observed_path, ndmin=2)
-            if observations.shape[1] != 5:
-                raise ValueError(f"{title} observations need five columns: x y z value std.")
-            require_real_finite(observations, f"{title} observations")
-            observed = observations[:, 3]
-            predicted = np.asarray(predicted).ravel()
-            require_real_finite(predicted, f"{title} predictions")
-            if observed.shape != predicted.shape:
-                raise ValueError(f"{title} prediction and observation shapes differ.")
-            coordinates = observations[:, :3]
-            if len(coordinates) != len(observed):
-                raise ValueError(f"{title} station coordinates do not match observations.")
-            if key == "gravity":
-                component = workflow["config"]["data"].get("gravity_component", "gz")
-                unit = "Eötvös" if len(component) == 3 else "mGal"
-            residual = observed - predicted
-            finite = np.isfinite(observed) & np.isfinite(predicted)
-            if not finite.any():
-                continue
-            rmse = float(np.sqrt(np.mean(residual[finite] ** 2)))
-            metadata.setdefault("fit", {})[key] = {
-                "rmse": rmse,
-                "units": unit,
-                "n_stations": int(finite.sum()),
-                "residual_definition": "observed - predicted",
-            }
-            figure = Figure(figsize=(13, 4.2), layout="constrained")
-            FigureCanvasAgg(figure)
-            axes = figure.subplots(1, 3)
-            limits = (
-                float(min(observed[finite].min(), predicted[finite].min())),
-                float(max(observed[finite].max(), predicted[finite].max())),
-            )
-            bound = max(float(np.abs(residual[finite]).max()), 1e-12)
-            for ax, values, label in zip(
-                axes, (observed, predicted, residual), ("Observed", "Predicted", "Residual")
-            ):
-                vmin, vmax = (-bound, bound) if label == "Residual" else limits
-                artist = ax.scatter(
-                    coordinates[finite, 0],
-                    coordinates[finite, 1],
-                    c=values[finite],
-                    s=9,
-                    cmap="RdBu_r",
-                    vmin=vmin,
-                    vmax=vmax,
-                )
-                ax.set(title=label, xlabel="Easting (m)", ylabel="Northing (m)")
-                ax.set_aspect("equal", adjustable="box")
-                ax.ticklabel_format(style="plain", useOffset=False)
-                ax.tick_params(labelsize=7)
-                figure.colorbar(artist, ax=ax, shrink=0.8, label=unit)
-            figure.suptitle(f"{title} data fit · RMSE {rmse:.3g} {unit}", fontsize=14)
-            path = directory / f"{key}_data_fit.png"
-            figure.savefig(path, dpi=160)
-            figures[f"{title} data fit"] = str(path)
+    fit_data = {}
+    for key, title, unit in (("gravity", "Gravity", "mGal"), ("magnetics", "Magnetics", "nT")):
+        observed_path = inv.get("paths", {}).get(f"obs_{key}_ubc")
+        predicted = inv.get(f"dpred_{key}")
+        if predicted is None:
+            predicted_path = inv.get("paths", {}).get(f"dpred_{key}_npy")
+            if predicted_path and Path(predicted_path).is_file():
+                predicted = np.load(predicted_path)
+        if not observed_path or predicted is None:
+            continue
+        observations = np.loadtxt(observed_path, ndmin=2)
+        if observations.shape[1] != 5:
+            raise ValueError(f"{title} observations need five columns: x y z value std.")
+        require_real_finite(observations, f"{title} observations")
+        predicted = np.asarray(predicted).ravel()
+        require_real_finite(predicted, f"{title} predictions")
+        observed = observations[:, 3]
+        if observed.shape != predicted.shape:
+            raise ValueError(f"{title} prediction and observation shapes differ.")
+        if key == "gravity":
+            component = workflow.get("config", {}).get("data", {}).get("gravity_component", "gz")
+            unit = "E" if len(component) == 3 else "mGal"
+        residual = predicted - observed  # Same convention as paper notebook 4_1.
+        fit_data[key] = (observations[:, :2], observed, predicted, residual, unit)
+        metadata.setdefault("fit", {})[key] = {
+            "rmse": float(np.sqrt(np.mean(residual**2))),
+            "units": unit,
+            "n_stations": len(observed),
+            "residual_definition": "predicted - observed",
+        }
+    if fit_data:
+        path = directory / "data_fit.png"
+        columns = [
+            (case, key, component.upper() if key == "gravity" else "Magnetics") for key in fit_data
+        ]
+        render_data_fit(columns, lambda _case, key: fit_data[key], path, dpi=160, adaptive=True)
+        figures["Data fit"] = str(path)
     (directory / "model_metadata.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
     )

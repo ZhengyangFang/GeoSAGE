@@ -7,7 +7,7 @@ from copy import deepcopy
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
-                              QDialog, QDialogButtonBox, QFormLayout, QPlainTextEdit, QHBoxLayout)
+                              QDialog, QDialogButtonBox, QFormLayout, QPlainTextEdit, QHBoxLayout, QTabBar)
 
 from .configuration import configure, FILE_ROLES
 
@@ -16,6 +16,7 @@ class WorkflowSetup(QWidget):
     """Optional host setup interface: update_inputs, request, prepare_payload."""
 
     changed = Signal()
+    detailsChanged = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,8 +29,18 @@ class WorkflowSetup(QWidget):
                            ("Run a new inversion · local", "invert"),
                            ("Interpret existing results · with AI", "interpret")):
             self.task.addItem(label, key)
-        layout.addWidget(QLabel("What would you like to do?"))
-        layout.addWidget(self.task)
+        self.task.setItemText(0, 'View results')
+        self.task.setItemText(1, 'New inversion')
+        self.task.setItemText(2, 'AI interpretation')
+        self.task.setMinimumHeight(44)
+        self.task.hide()
+        self.task_tabs = QTabBar()
+        self.task_tabs.setExpanding(True)
+        for index in range(self.task.count()):
+            self.task_tabs.addTab(self.task.itemText(index))
+        self.task_tabs.currentChanged.connect(self.task.setCurrentIndex)
+        self.task.currentIndexChanged.connect(self.task_tabs.setCurrentIndex)
+        layout.addWidget(self.task_tabs)
         self.note = QLabel()
         self.note.setWordWrap(True)
         layout.addWidget(self.note)
@@ -39,29 +50,43 @@ class WorkflowSetup(QWidget):
         layout.addWidget(self.goal)
         self.edit = QPushButton("Create / edit inversion configuration")
         self.edit.clicked.connect(self.edit_configuration)
-        layout.addWidget(self.edit)
+        self.options = QPushButton('Options')
+        self.options.setCheckable(True)
+        self.options.setFlat(True)
+        options_row = QHBoxLayout()
+        options_row.addStretch(1)
+        options_row.addWidget(self.options)
+        layout.addLayout(options_row)
+        self.advanced = QWidget()
+        advanced_layout = QVBoxLayout(self.advanced)
+        advanced_layout.setContentsMargins(0, 4, 0, 4)
+        layout.addWidget(self.advanced)
+        self.advanced.hide()
+        self.options.toggled.connect(self.advanced.setVisible)
+        self.options.toggled.connect(self.detailsChanged.emit)
+        advanced_layout.addWidget(self.edit)
         self.check = QPushButton("Check inputs && preview configuration")
         checks = QHBoxLayout()
         checks.addWidget(self.check)
-        layout.addLayout(checks)
+        advanced_layout.addLayout(checks)
         self.preview = QTextBrowser()
         self.preview.setMinimumHeight(90)
         self.preview.setMaximumHeight(140)
         self.preview.hide()
         self.preview.setAccessibleName("Configuration and input readiness")
-        layout.addWidget(self.preview)
+        advanced_layout.addWidget(self.preview)
         self.check.clicked.connect(self.refresh_preview)
         self.all_parameters = QPushButton("View all resolved parameters")
         self.all_parameters.clicked.connect(self.show_parameters)
         checks.addWidget(self.all_parameters)
         self.plan_toggle = QPushButton('How the agents work together')
         self.plan_toggle.setCheckable(True)
-        layout.addWidget(self.plan_toggle)
+        advanced_layout.addWidget(self.plan_toggle)
         self.agent_plan = QTextBrowser()
         self.agent_plan.setMaximumHeight(190)
         self.agent_plan.setAccessibleName('Agent responsibilities and handoffs')
         self.agent_plan.hide()
-        layout.addWidget(self.agent_plan)
+        advanced_layout.addWidget(self.agent_plan)
         self.plan_toggle.toggled.connect(self.agent_plan.setVisible)
         self.task.currentIndexChanged.connect(self._task_changed)
         self._task_changed()
@@ -86,6 +111,7 @@ class WorkflowSetup(QWidget):
         }[self.task.currentData()]
 
     def show_error(self, message):
+        self.options.setChecked(True)
         self.preview.show()
         self.preview.setPlainText(str(message))
 
@@ -93,9 +119,9 @@ class WorkflowSetup(QWidget):
         self.edit.setVisible(self.task.currentData() == "invert")
         self.goal.setVisible(self.needs_ai)
         self.note.setText({
-            "inspect": "Add an existing inversion folder. No AI account is needed. Recorded labels are preserved; missing labels use explicitly identified property clusters.",
-            "invert": "Add a GeoSAGE JSON configuration and its survey inputs. The preview is the authority for this run; independent processing tools do not change these settings.",
-            "interpret": "Add existing results and optional geological references. AI receives the goal and structured evidence/reference text. Configure the provider in Assistant settings.",
+            "inspect": "Explore an existing model. No AI account needed.",
+            "invert": "Choose a configuration for your survey.",
+            "interpret": "Explain an existing model with AI.",
         }[self.task.currentData()])
         self.preview.setPlainText("Add the files below, then check inputs before starting.")
         self.preview.hide()

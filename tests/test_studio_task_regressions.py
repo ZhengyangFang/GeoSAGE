@@ -6,6 +6,7 @@ import pytest
 pytest.importorskip('PyHydroGeophysX.agents.assistants')
 pytest.importorskip('PySide6')
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent
 from geosage.pyhydrogeophysx import ASSISTANT
 from geosage.pyhydrogeophysx.configuration import configure
 from geosage.pyhydrogeophysx.setup import WorkflowSetup
@@ -14,8 +15,8 @@ from PyHydroGeophysX.qt_apps.state import StudioState
 from test_studio_integration import archived_payload
 
 @pytest.fixture(scope='module')
-def app():
-    return QApplication.instance() or QApplication([])
+def app(studio_app):
+    return studio_app
 
 @pytest.fixture
 def page(app, tmp_path):
@@ -28,6 +29,7 @@ def page(app, tmp_path):
     widget._workers.clear()
     widget.close()
     widget.deleteLater()
+    QApplication.sendPostedEvents(widget, QEvent.DeferredDelete)
     app.processEvents()
 
 def test_inactive_missing_input_does_not_block_archive_task(page, tmp_path, monkeypatch):
@@ -127,3 +129,28 @@ def test_unknown_duration_does_not_advertise_a_percentage(page):
     page._on_progress('Joint inversion', .65, 'Iteration 3/20 · data misfit 25', 'joint_inversion')
     assert page._agent_status()['progress_percent'] is None
     assert 'Iteration 3/20' in page.status.text()
+
+
+def test_compact_setup_reveals_advanced_controls_and_errors(page):
+    setup = page._workflow_setup
+    assert setup.advanced.isHidden() and page.role.isHidden()
+    assert page.follow.isHidden() and page.step_through.isHidden()
+    assert not page.tabs.isTabVisible(page.tabs.indexOf(page.details))
+    setup.options.click()
+    assert not page.role.isHidden() and not page.step_through.isHidden()
+    assert page.tabs.isTabVisible(page.tabs.indexOf(page.details))
+    setup.options.click()
+    setup.show_error('Missing mesh')
+    assert setup.options.isChecked() and not setup.advanced.isHidden()
+    assert setup.preview.toPlainText() == 'Missing mesh'
+
+
+def test_task_segments_select_the_correct_input_and_action(page):
+    setup = page._workflow_setup
+    setup.task_tabs.setCurrentIndex(1)
+    assert setup.task.currentData() == 'invert'
+    assert page.role.currentData() == 'config_file'
+    assert page.run.text() == 'Run inversion'
+    setup.task_tabs.setCurrentIndex(2)
+    assert setup.needs_ai and page.role.currentData() == 'source_inversion_dir'
+    assert page.run.text() == 'Generate interpretation'

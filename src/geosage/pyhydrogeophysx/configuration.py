@@ -172,8 +172,6 @@ def configure(payload):
     protected = [Path(project["input_dir"]).resolve()]
     if source:
         protected.append(Path(source).resolve())
-    if any(output == p or p in output.parents or output in p.parents for p in protected):
-        raise ValueError("Studio output must be outside the input and source inversion folders.")
     project["output_dir"] = str(output / "models")
     project["interpretation_output_dir"] = str(output / "interpretation")
     if not project["name"] or Path(project["name"]).name != project["name"]:
@@ -194,6 +192,10 @@ def configure(payload):
     ]
     if any(output == p or output in p.parents for p in protected_files):
         raise ValueError("Studio output must not contain any input, configuration or prior files.")
+    # Report the selected file first when a config's default input directory
+    # also resolves beneath the destination. Both overlap checks still apply.
+    if any(output == p or p in output.parents or output in p.parents for p in protected):
+        raise ValueError("Studio output must be outside the input and source inversion folders.")
     # Absence of explicit priors uses unsupervised clusters, not invented lithology.
     if cfg["geology"].get("mode") == "csv_manual" and not cfg["geology"].get("unit_defs_csv"):
         cfg["geology"]["mode"] = "gmm_only"

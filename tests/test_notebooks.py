@@ -10,7 +10,8 @@ NOTEBOOKS = Path(__file__).resolve().parents[1] / "notebooks"
 
 
 @pytest.mark.parametrize("path", sorted(NOTEBOOKS.glob("*.ipynb")), ids=lambda p: p.name)
-def test_notebook_code_and_workspace_setup(path, monkeypatch):
+@pytest.mark.parametrize("shared_workspace", [False, True])
+def test_notebook_code_and_workspace_setup(path, monkeypatch, tmp_path, shared_workspace):
     notebook = json.loads(path.read_text(encoding="utf-8-sig"))
     cells = [c for c in notebook["cells"] if c["cell_type"] == "code"]
     for cell in cells:
@@ -30,7 +31,15 @@ def test_notebook_code_and_workspace_setup(path, monkeypatch):
             setup.append(node)
             break
     assert len(setup) == 2
-    monkeypatch.chdir(NOTEBOOKS)
+    # Exercise actual notebook setup in both supported layouts, independently
+    # of the developer's own workspace marker or environment override.
+    monkeypatch.delenv("GEOSAGE_WORKSPACE", raising=False)
+    checkout = tmp_path / "GeoSAGE"
+    (checkout / "notebooks").mkdir(parents=True)
+    (checkout / "pyproject.toml").write_text('[project]\nname="geosage"\n')
+    if shared_workspace:
+        (tmp_path / ".geosage-workspace").touch()
+    monkeypatch.chdir(checkout / "notebooks")
     namespace = {}
     exec(compile(ast.Module(body=setup, type_ignores=[]), path.name, "exec"), namespace)
-    assert namespace["ROOT"] == NOTEBOOKS.parent
+    assert namespace["ROOT"] == (tmp_path if shared_workspace else checkout)

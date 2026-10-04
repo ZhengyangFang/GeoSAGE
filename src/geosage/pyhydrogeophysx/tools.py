@@ -168,14 +168,14 @@ def build_quasi_geology(ctx):
     figures = exports["figures"]
     result["inversion_result"].setdefault("paths", {})["inversion_result_slice_list"] = [
         figures[k]
-        for k in ("Density contrast", "Susceptibility", "Gravity data fit", "Magnetics data fit")
+        for k in ("Data fit",)
         if k in figures
     ]
     geo_paths = result["geology_result"].setdefault("paths", {})
     geo_paths["geo_combo_slice_pngs"] = (
-        [figures["Geological groups"]] if "Geological groups" in figures else []
+        [figures["Model sections"]] if "Model sections" in figures else []
     )
-    geo_paths["scatter_rho_kappa"] = figures["Physical-property distribution"]
+    geo_paths["scatter_rho_kappa"] = figures.get("Physical-property distribution")
     groups = len((result["geology_result"] or {}).get("geo_defs", {}))
     return (
         f"Prepared {groups} geological groups, numerical evidence, slices and a 3D viewer model.",

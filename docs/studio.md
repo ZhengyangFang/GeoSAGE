@@ -12,6 +12,15 @@ tested against upstream commit `e8c0c5cec1e4bb6cb4bdcbfabf69f279814d0ac2`.
 Use the source checkouts while this integration is under review: a release
 carrying the same version number may predate that API.
 
+The desktop enhancements are available in the
+[companion host branch](https://github.com/ZhengyangFang/PyHydroGeophysX/tree/feature/geosage-integration).
+Until they are merged upstream, pair GeoSAGE `main` with that branch:
+
+```bash
+git clone https://github.com/ZhengyangFang/GeoSAGE.git
+git clone --branch feature/geosage-integration https://github.com/ZhengyangFang/PyHydroGeophysX.git
+```
+
 The accompanying host changes add an explicit offline-workflow capability,
 multi-property VTK selection, per-property colour defaults and a persistent
 `needs_review` status. The plugin can register with the unmodified scaffold;
@@ -34,6 +43,29 @@ No API key is needed for the numerical workflow. PyGIMLi, hydrological solvers,
 CUDA and the host's other domain extras are not required for GeoSAGE.
 
 ## Inspect existing results
+
+The default GeoSAGE workspace has two sidebar destinations: **Data & reports**
+and **Saved Results**. Start with **View results**, **New inversion**, or
+**AI interpretation** and choose the primary input. **Options** reveals additional
+input roles, configuration checks, agent responsibilities, step approvals and
+logs. In Saved Results, selecting a record opens its visualization; **Details**
+reveals metadata, file management and display options. **View → Show all processing
+tools** restores the host's other modules. Numerical behavior is unchanged.
+
+In **Saved Results**, select a run and open **Report** to read its saved Markdown
+report with fitted figures. This also works for existing runs whose reports were
+recorded only in `result.json`. **Visualization** shows models and figures by
+default; **Details** exposes JSON metadata and the complete file list. A local
+Inspect run contains a numerical evidence summary, not an AI interpretation.
+
+To use the agents for interpretation, choose **Data & reports → AI interpretation**,
+select an existing inversion folder, enter an optional question, and configure a
+provider in **Assistant → Settings**. **Generate interpretation** starts the
+workflow. **Options → How the agents work together** shows the stage responsibilities
+and dependencies; **Activity** shows execution progress. The controller coordinates
+data validation, priors, model loading/inversion, geology, report writing and review.
+Local viewing does not call an AI provider. Interpretation of existing models does
+not rerun the inversion.
 
 1. Open or create a **Project** outside the source data and inversion folders.
 2. Select **GeoSAGE** in the assistant picker. In **Data & reports → Data**, add
@@ -194,6 +226,38 @@ recorded geological labels as tables. `numerical_summary.json` retains the full
 record; displayed ranges are not uncertainty estimates or geological conclusions.
 
 ## Validate and share
+
+### Adaptive views and paper exports
+
+The Studio and notebooks `3_1`, `3_2`, and `4_1` use the same functions in
+`geosage.plotting.paper`: model sections, unit-coloured property crossplots and
+observed/predicted/residual panels. The Studio selects `adaptive=True`: one
+horizontal and one vertical section at the physical mesh midpoints, full-range
+scales derived from this run, actual cell edges and equal axis units. Metres or
+kilometres follow the domain size. Project names never select display limits.
+Signed fields use a diverging palette; nonnegative susceptibility uses a
+sequential palette. Geological IDs stay discrete, including sparse IDs.
+The 3D model uses the same field scales and categorical colours.
+
+Observed and predicted panels share one scale; residuals use a separate
+zero-centred scale with the **predicted minus observed** convention. Maps do
+not extrapolate beyond the station convex hull; line surveys show measured
+station positions. Auto-ranging applies per run, so compare the displayed
+colour bars before comparing different runs by colour. Supply a unit-definitions
+file for legend names; missing names never change numerical labels.
+
+Notebooks retain their original layouts, case-specific presets and 600 dpi
+publication exports. Studio creates 160 dpi
+previews and retains the interactive 3D model, rather than maintaining another
+set of plotting implementations. Line surveys show station values instead of
+attempting an undefined 2D interpolation. Saved runs retain the figures produced
+at the time; inspect an archive again to create a run using the shared plots.
+
+The host retains one model-viewer OpenGL widget across artifact and Project
+changes, resetting project data in place. This avoids the Windows compositor
+failure observed after native folder dialogs. Regression testing must include
+real Windows folder-dialog acceptance and screen capture: an offscreen Qt render
+does not detect this failure.
 
 ```bash
 python -m pytest tests

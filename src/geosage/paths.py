@@ -11,7 +11,12 @@ from typing import Any
 
 
 def workspace_root(start: str | Path | None = None) -> Path:
-    """Use GEOSAGE_WORKSPACE, the enclosing checkout, or the supplied directory."""
+    """Use an override, marked workspace, enclosing checkout, or start directory.
+
+    A .geosage-workspace marker can group sibling source checkouts with private
+    data/ and outputs/. A checkout directly inside that workspace shares its
+    data root; deeper independent projects retain their own root.
+    """
     override = os.environ.get("GEOSAGE_WORKSPACE")
     if override:
         return Path(override).expanduser().resolve()
@@ -19,12 +24,15 @@ def workspace_root(start: str | Path | None = None) -> Path:
     if current.is_file():
         current = current.parent
     for parent in (current, *current.parents):
+        if (parent / ".geosage-workspace").is_file():
+            return parent
         metadata = parent / "pyproject.toml"
         if metadata.is_file():
             import tomllib
             with metadata.open("rb") as handle:
                 if tomllib.load(handle).get("project", {}).get("name") == "geosage":
-                    return parent
+                    shared = parent.parent
+                    return shared if (shared / ".geosage-workspace").is_file() else parent
     return current
 
 

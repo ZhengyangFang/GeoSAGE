@@ -130,16 +130,16 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
             artifacts.append(
                 {
                     "artifact_id": name,
+                    "label": "3D model" if name == "geosage_volume" else (
+                        "Property relationships" if name == "Physical-property distribution" else name),
                     "path": path,
                     "format": Path(path).suffix.lstrip("."),
                     "kind": "model" if name == "geosage_volume" else "figure",
                     "metadata": {
                         "title": name,
                         "coordinate_units": "m",
-                        "scalar_cmaps": {
-                            "Density contrast (g/cm3)": "RdBu_r",
-                            "Susceptibility (SI)": "viridis",
-                        },
+                        "scalar_cmaps": {key: value['cmap'] for key, value in
+                                         exports.get('viewer_fields', {}).items() if 'cmap' in value},
                         "z_convention": "elevation, positive up",
                         "linked_sections": name == "geosage_volume",
                         "field_metadata": exports.get("viewer_fields", {}),

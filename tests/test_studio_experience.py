@@ -22,7 +22,7 @@ def test_local_task_ignores_supplied_key_and_does_not_claim_ai_review(tmp_path, 
     assert 'Record review status' in labels
     assert 'Review report' not in labels
     assert result['exports']['viewer_fields']['Density contrast (g/cm3)']['limits'] == [-7, 7]
-    assert result['exports']['viewer_fields']['Geo ID']['colors']['0'] == '#efeff5'
+    assert result['exports']['viewer_fields']['Geo ID']['colors']['0'] == '#e5e7eb'
 
 
 def test_new_inversion_task_cannot_silently_reuse_archive(tmp_path):
@@ -40,11 +40,10 @@ def test_ai_task_requires_session_provider_before_writing(tmp_path):
         configure(payload)
 
 
-def test_setup_preview_does_not_change_source_or_create_output(tmp_path):
+def test_setup_preview_does_not_change_source_or_create_output(tmp_path, studio_app):
     pytest.importorskip('PySide6')
-    from PySide6.QtWidgets import QApplication
     from geosage.pyhydrogeophysx.setup import WorkflowSetup
-    app = QApplication.instance() or QApplication([])
+    app = studio_app
     payload = archived_payload(tmp_path)
     widget = WorkflowSetup()
     widget.update_inputs(payload['inputs'])
@@ -60,14 +59,14 @@ def test_setup_preview_does_not_change_source_or_create_output(tmp_path):
     app.processEvents()
 
 
-def test_configuration_editor_preserves_source_and_advanced_settings(tmp_path):
+def test_configuration_editor_preserves_source_and_advanced_settings(tmp_path, studio_app):
     pytest.importorskip('PySide6')
     import json
     from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QApplication, QDialogButtonBox, QLineEdit
+    from PySide6.QtWidgets import QDialogButtonBox, QLineEdit
     from geosage.pyhydrogeophysx.setup import WorkflowSetup
 
-    app = QApplication.instance() or QApplication([])
+    app = studio_app
     source = tmp_path / 'configuration.json'
     original = json.dumps({'inversion': {'maxGNCG': 17}})
     source.write_text(original, encoding='utf-8')

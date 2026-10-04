@@ -59,6 +59,30 @@ def test_workspace_override_and_legacy_input_fallback(tmp_path, monkeypatch):
     assert data_path("Hannah") == external / "data" / "Hannah"
 
 
+def test_sibling_checkout_uses_marked_private_workspace(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEOSAGE_WORKSPACE", raising=False)
+    shared = tmp_path / "research"
+    checkout = shared / "GeoSAGE"
+    (checkout / "notebooks").mkdir(parents=True)
+    (checkout / "configs").mkdir()
+    (checkout / "pyproject.toml").write_text('[project]\nname="geosage"\n')
+    (shared / ".geosage-workspace").touch()
+    config = checkout / "configs" / "case.json"
+    config.write_text(json.dumps({"project": {"input_dir": "data/Iowa",
+        "source_inversion_dir": "outputs/Iowa_Inversion_GPT"}}))
+    monkeypatch.chdir(checkout / "notebooks")
+    assert workspace_root() == shared
+    assert workspace_root(config) == shared
+    assert data_path("Iowa") == shared / "data" / "Iowa"
+    assert result_path("Iowa_Inversion_GPT") == shared / "outputs" / "Iowa_Inversion_GPT"
+    assert load_config(config)["project"]["input_dir"] == str(shared / "data" / "Iowa")
+    # Test workspaces inside the shared directory remain independent.
+    independent = _workspace(shared / "scratch")
+    assert workspace_root(independent / "notebooks") == independent
+    monkeypatch.setenv("GEOSAGE_WORKSPACE", str(tmp_path / "override"))
+    assert workspace_root(config) == tmp_path / "override"
+
+
 def test_explicit_workspace_is_relative_to_config_and_overrides_environment(tmp_path, monkeypatch):
     root = _workspace(tmp_path)
     monkeypatch.setenv("GEOSAGE_WORKSPACE", str(tmp_path / "wrong"))

@@ -10,6 +10,9 @@ two entry points. The old root-level modules and `tools/` helper are removed.
 
 ```text
 workspace/
+├── .geosage-workspace    # Optional marker for a shared local workspace
+├── GeoSAGE/              # This source checkout
+├── PyHydroGeophysX/      # Optional Studio source checkout
 ├── data/
 │   ├── Hannah/
 │   ├── Iowa/
@@ -19,7 +22,7 @@ workspace/
 │   ├── Iowa_Inversion_GPT/
 │   ├── figures/
 │   └── comparisons/
-└── ...project code, if this is also your checkout
+└── studio/               # Optional local Studio project
 ```
 
 These data directories are local and not included in Git. No archive contents
@@ -42,8 +45,12 @@ For workflow JSON configurations:
    to the current working directory.
 2. Otherwise, `GEOSAGE_WORKSPACE` selects the workspace.
 3. Otherwise, discovery walks upward from the configuration file (or cwd for a
-   Python dictionary) to find the GeoSAGE `pyproject.toml`.
-4. If no checkout is found, the configuration file's directory (or cwd) is used.
+   Python dictionary). A `.geosage-workspace` file selects its directory. A
+   GeoSAGE `pyproject.toml` selects its checkout, except when the checkout's
+   immediate parent contains that marker: then the parent is the workspace.
+   This lets sibling code checkouts share private `data/` and `outputs/`.
+4. If neither a marker nor a checkout is found, the configuration file's directory
+   (or cwd) is used.
 
 All other relative input/output paths are interpreted within that workspace.
 The configuration is copied before path resolution, so caller-owned dictionaries

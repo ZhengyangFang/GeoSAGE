@@ -10,6 +10,13 @@ outputs are not committed. Existing data archives are documented in the
 
 ## Project layout
 
+| Task | Start here |
+| --- | --- |
+| Explore models, figures and reports | [Studio guide](docs/studio.md) |
+| Run or interpret a case | `configs/`, then the commands below |
+| Reproduce paper figures and assessments | [Notebook guide](notebooks/README.md) |
+| Connect private data and existing results | [Path guide](docs/paths.md) |
+
 ```text
 GeoSAGE/
 ├── src/geosage/          # Installable Python package and command-line entry points
@@ -26,6 +33,22 @@ GeoSAGE/
 Local inputs belong in `data/` and generated products in `outputs/`. Both are
 ignored by Git. Existing flat folders such as `Hannah/`, `Iowa/`, and
 `Hannah_Inversion_GPT/` are still recognized when reading older workspaces.
+
+Inside `src/geosage/`, responsibilities are separated as follows:
+
+| Module | Responsibility |
+| --- | --- |
+| `runner.py` | Configured numerical and geological workflow |
+| `multi_agent_runner.py` | Agent orchestration, interpretation and review |
+| `gravity_mag_joint_inversion.py`, `geo_modeling_workflow.py` | Scientific computation |
+| `existing_results.py`, `paths.py`, `validation.py` | Result loading, paths and input checks |
+| `plotting/` | Shared figures and colour scales for notebooks and Studio |
+| `pyhydrogeophysx/` | Studio assistant, workflow and viewer integration |
+
+Use `from geosage.plotting import render_model_sections, render_property_crossplot,
+render_data_fit` for shared plotting. The default preset preserves paper exports;
+`adaptive=True` selects compact views whose scales follow the current dataset.
+The Studio adapter exports these figures and the interactive VTK model.
 
 ## Install
 

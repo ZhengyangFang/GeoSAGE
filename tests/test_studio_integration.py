@@ -79,7 +79,13 @@ def test_archived_run_preserves_values_coordinates_and_source(tmp_path):
     np.testing.assert_array_equal(model.z, [-10, -9, 0])
     assert Path(result["report_files"]["report_markdown"]).is_file()
     assert "No LLM interpretation" in Path(result["report_files"]["report_markdown"]).read_text()
-    assert len(result["exports"]["figures"]) == 4
+    assert set(result["exports"]["figures"]) == {"Model sections", "Physical-property distribution"}
+    metadata = json.loads(Path(result['exports']['metadata']).read_text(encoding='utf-8'))
+    assert metadata['display']['preset'] == 'adaptive'
+    density_style = metadata['viewer_fields']['Density contrast (g/cm3)']
+    assert density_style['limits'] == [-7., 7.]
+    assert density_style['range_policy'] == 'full range'
+    assert result['artifacts'][0]['label'] == '3D model'
     with pytest.raises(FileExistsError):
         run(payload, lambda *a: None, approve=approve)
 
@@ -213,8 +219,10 @@ def test_full_adapter_matches_direct_synthetic_inversion(tmp_path, monkeypatch):
     adapted = load_existing_inversion_result(tmp_path / "studio/models")
     for key in ("dens_core_3d", "susc_core_3d"):
         np.testing.assert_allclose(adapted[key], direct[key], rtol=1e-10, atol=1e-12)
-    assert "Gravity data fit" in result["exports"]["figures"]
-    assert "Magnetics data fit" in result["exports"]["figures"]
+    assert "Data fit" in result["exports"]["figures"]
+    metadata = json.loads(Path(result['exports']['metadata']).read_text())
+    assert set(metadata['fit']) == {'gravity', 'magnetics'}
+    assert all(row['residual_definition'] == 'predicted - observed' for row in metadata['fit'].values())
     assert result["iterations"]
     assert result["iterations"][0]["iteration"] >= 1
     assert "data_misfit" in result["iterations"][0]
