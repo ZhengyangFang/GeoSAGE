@@ -193,18 +193,17 @@ def write_report(ctx):
             "draft_report": draft
         }
     # A deterministic record is useful offline, but is never called AI-reviewed.
+    from .presentation import numerical_overview
+
     prepared = geo["prepared"]
+    (Path(ctx.output_dir) / 'numerical_summary.json').write_text(
+        json.dumps(prepared['result_summary'], indent=2, default=str), encoding='utf-8')
     lines = [
         "# GeoSAGE · Numerical evidence summary",
         "",
         "**No LLM interpretation or independent report review was performed.**",
         "",
-        "## Recorded results",
-        "",
-        "```json",
-        json.dumps(prepared["result_summary"], indent=2, default=str),
-        "```",
-        "",
+        *numerical_overview(prepared['result_summary']),
         "Coordinates are mesh coordinates in metres. Z is elevation, not depth below ground.",
         "A precise target depth requires the topography-based evidence audit.",
         "",

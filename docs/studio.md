@@ -164,6 +164,35 @@ is not presented as a scientific difference.
   residuals, and report RMSE in mGal (gravity gradients: Eötvös) or nT.
 - No data-fit map is claimed when the observation/prediction files are absent.
 
+## Agent handoffs and continuing a run
+
+Expand **How the agents work together** in task setup to see the six stages,
+their responsibilities and what each hands to the next. Checking inputs updates
+the plan for the resolved geology configuration, including AI grouping when
+configured. The preview and execution share the same tool registry and the
+PyHydroGeophysX dependency controller; numerical parameters are not changed by
+the continuation mechanism.
+
+After numerical models are available, **Interpret these models…** prepares an
+AI interpretation task with those models and the recorded configuration. Review
+the inputs, objective and provider settings before pressing **Generate
+interpretation**. Preparing the task does not contact a provider or run anything.
+It works after a report failure as well as after a successful local run.
+
+Each completed stage updates `studio_checkpoint.json` atomically, recording its
+agent, outputs, outcome and error. When reusable model files exist, a local
+`continue_config.json` is also saved. After restarting Studio, choose an existing
+results task and add that file as the configuration to reuse the numerical models
+in a **new output folder**. Keep the referenced model and prior files in place.
+This reuses completed numerical work; it does not resume an interrupted optimizer
+iteration or skip unfinished interpretation/review. The selected geology mode
+still applies; new full-run labels are reused when they were successfully saved.
+These generated records remain local and are not part of the code contribution.
+
+Local numerical summaries present mesh dimensions, physical-property ranges and
+recorded geological labels as tables. `numerical_summary.json` retains the full
+record; displayed ranges are not uncertainty estimates or geological conclusions.
+
 ## Validate and share
 
 ```bash

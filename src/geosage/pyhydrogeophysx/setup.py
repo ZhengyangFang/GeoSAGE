@@ -54,6 +54,15 @@ class WorkflowSetup(QWidget):
         self.all_parameters = QPushButton("View all resolved parameters")
         self.all_parameters.clicked.connect(self.show_parameters)
         checks.addWidget(self.all_parameters)
+        self.plan_toggle = QPushButton('How the agents work together')
+        self.plan_toggle.setCheckable(True)
+        layout.addWidget(self.plan_toggle)
+        self.agent_plan = QTextBrowser()
+        self.agent_plan.setMaximumHeight(190)
+        self.agent_plan.setAccessibleName('Agent responsibilities and handoffs')
+        self.agent_plan.hide()
+        layout.addWidget(self.agent_plan)
+        self.plan_toggle.toggled.connect(self.agent_plan.setVisible)
         self.task.currentIndexChanged.connect(self._task_changed)
         self._task_changed()
 
@@ -90,7 +99,44 @@ class WorkflowSetup(QWidget):
         }[self.task.currentData()])
         self.preview.setPlainText("Add the files below, then check inputs before starting.")
         self.preview.hide()
+        self._show_agent_plan()
         self.changed.emit()
+
+    def _show_agent_plan(self, config=None):
+        from .lifecycle import plan_for
+
+        config = config or {'run': {'execution_mode': 'full' if self.task.currentData() == 'invert' else 'interpret_existing'}}
+        rows = plan_for(config, self.needs_ai)
+        outputs = {'field_data': 'Validated inputs', 'geological_priors': 'Geological priors',
+                   'property_models': 'Density and susceptibility', 'geo_model': 'Labels, views and evidence',
+                   'draft_report': 'Interpretation draft' if self.needs_ai else 'Numerical summary',
+                   'report_files': 'Report and review status'}
+        self.agent_plan.setHtml('<b>Each stage hands its outputs to the next.</b><ol>' + ''.join(
+            f'<li><b>{escape(row["label"])}</b> · {escape(row["agent"])} · '
+            f'{"AI" if row["uses_ai"] else "Local"}<br>'
+            f'Hands over: {escape(", ".join(outputs.get(p, p) for p in row["produces"]))}</li>' for row in rows
+        ) + '</ol><p>Model calculation is local. Interpretation and review use AI only when selected. '
+            'Configured AI geological grouping is shown when inputs are checked. '
+            'If a later stage fails, completed numerical models can be reused in a new run.</p>')
+
+    def prepare_continuation(self, result):
+        """Prepare the next task without starting work or contacting a provider."""
+        continuation = result.get('continuation') or {}
+        path = Path(continuation.get('config_file') or '')
+        if not path.is_file():
+            raise ValueError('The continuation configuration is missing. Reopen the original output folder.')
+        config = json.loads(path.read_text(encoding='utf-8'))
+        source = Path(continuation['source_inversion_dir'])
+        from geosage.existing_results import REQUIRED_ARTIFACTS
+
+        if not all((source / p).is_file() for p in REQUIRED_ARTIFACTS.values()):
+            raise ValueError('The saved numerical models are no longer available at their recorded location.')
+        if config.get('project', {}).get('source_inversion_dir') != str(source):
+            raise ValueError('The continuation configuration no longer matches this run.')
+        self._configuration = None
+        self.goal.clear()
+        self.task.setCurrentIndex(self.task.findData('interpret'))
+        return {'config_file': str(path), 'source_inversion_dir': str(source)}
 
     def allowed_roles(self):
         common = {"config_file", "unit_defs_file", "unit_groups_file", "reference_file"}
@@ -146,6 +192,7 @@ class WorkflowSetup(QWidget):
         try:
             payload = self.prepare_payload(payload)
             cfg = configure(payload)
+            self._show_agent_plan(cfg)
             project = cfg["project"]
             rows = [("Project", project["name"]), ("Execution", cfg["run"]["execution_mode"]),
                     ("Geology", cfg["geology"]["mode"]),

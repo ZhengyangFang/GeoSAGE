@@ -1,7 +1,6 @@
 """Studio workflow contract, with truthful outcomes and the shared runtime."""
 
 import json
-from dataclasses import replace
 from pathlib import Path
 
 from .configuration import configure
@@ -14,7 +13,8 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     from PyHydroGeophysX.agents.assistants.geosage.workflow import CONTROLLER_PROMPT
     from geosage.multi_agent_runner import _redact_trace_value
     from .providers import StudioLLM
-    from .tools import TOOLS, fingerprint
+    from .tools import fingerprint
+    from .lifecycle import checkpoint, plan_for, tools_for
 
     if not str(payload.get("request") or "").strip():
         raise ValueError("Describe the exploration objective or requested analysis.")
@@ -56,19 +56,25 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
             "GeoSAGE uses the configured local geological reference; Studio RAG/MCP retrieval is not enabled for this workflow."
         )
     recorded = []
+    planned_stages = plan_for(cfg, use_ai)
+
+    def save_checkpoint():
+        try:
+            return checkpoint(ctx, planned_stages)
+        except (OSError, ValueError, TypeError) as exc:
+            ctx.note(f'Could not save the continuation record: {exc}. Numerical files remain in the output folder.')
+            return None
 
     def emit(event):
         recorded.append(event)
+        if event.get('phase') == 'done':
+            save_checkpoint()
         if on_event:
             on_event(event)
 
     model = StudioLLM(settings)
-    run_tools = dict(TOOLS)
-    if cfg["run"]["execution_mode"] == "interpret_existing":
-        run_tools["run_joint_inversion"] = replace(TOOLS["run_joint_inversion"], label="Load existing models")
-    if not use_ai or not cfg["run"].get("write_reports", True):
-        run_tools["write_report"] = replace(TOOLS["write_report"], label="Export numerical summary")
-        run_tools["review_report"] = replace(TOOLS["review_report"], label="Record review status")
+    run_tools = tools_for(cfg, use_ai)
+    save_checkpoint()
 
     def ask(prompt, on_text=None):
         return model.query(prompt, temperature=0, max_tokens=500, on_text=on_text)
@@ -84,6 +90,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         finish="report_files",
         recovery=False,
     )
+    continuation = save_checkpoint()
     warnings = list(ctx.warnings)
     warnings += [
         f"{s.description}: {s.error}" for s in ctx.steps if s.status in {"failed", "blocked"}
@@ -155,6 +162,8 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "report_files": ctx.get("report_files") or {},
         "output_dir": str(output),
         "execution_plan": ctx.plan(),
+        "planned_stages": planned_stages,
+        "continuation": continuation if unchanged is not False else None,
         "workflow_config": _redact_trace_value(ctx.config),
         "exports": exports,
         "artifacts": artifacts,

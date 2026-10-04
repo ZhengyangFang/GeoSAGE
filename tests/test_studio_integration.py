@@ -218,3 +218,9 @@ def test_full_adapter_matches_direct_synthetic_inversion(tmp_path, monkeypatch):
     assert result["iterations"]
     assert result["iterations"][0]["iteration"] >= 1
     assert "data_misfit" in result["iterations"][0]
+    continuation = result['continuation']
+    assert Path(continuation['source_inversion_dir']) == tmp_path / 'studio/models'
+    config = json.loads(Path(continuation['config_file']).read_text())
+    assert config['run']['execution_mode'] == 'interpret_existing'
+    assert not config['run']['run_inversion']
+    assert config['geology']['mode'] == 'reuse_existing_geology'

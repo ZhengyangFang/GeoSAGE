@@ -42,4 +42,4 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: python -m pip install -c constraints-tested.txt ".[dev]" ./.upstream-phgx
-      - run: python -m pytest tests/test_studio_integration.py tests/test_studio_validation.py tests/test_studio_experience.py tests/test_studio_task_regressions.py -q
+      - run: python -m pytest tests/test_studio_integration.py tests/test_studio_validation.py tests/test_studio_experience.py tests/test_studio_task_regressions.py tests/test_studio_handoffs.py -q

@@ -82,6 +82,16 @@ def test_completed_run_has_unified_results_and_external_save_stays_in_sync(page,
     assert not page.view_fit.isEnabled()
     assert page.read_report.text() == 'Read numerical summary'
     assert page.save_result.isEnabled()
+    assert not page.next_step.isHidden()
+    assert page.continue_result.isEnabled()
+    page.continue_result.click()
+    assert page.tabs.currentWidget() is page._data_tab
+    assert page._workflow_setup.needs_ai
+    assert page._worker is None
+    assert page.progress.value() == 0
+    assert page.header.headline.text() == 'Next task ready to configure'
+    assert page._inputs == {'config_file': result['continuation']['config_file'],
+                            'source_inversion_dir': result['continuation']['source_inversion_dir']}
     page.state.results_store.save_run(handle.run_id)
     page._sync_result_storage()
     assert not page.save_result.isEnabled()
@@ -90,9 +100,11 @@ def test_completed_run_has_unified_results_and_external_save_stays_in_sync(page,
     page.state.set_results_store(tmp_path / 'different-project')
     page._sync_result_storage()
     assert not page.view_result.isEnabled()
+    assert not page.continue_result.isEnabled()
     page.state.results_store = original_store
     page._sync_result_storage()
     assert page.view_result.isEnabled()
+    assert page.continue_result.isEnabled()
 
 def test_task_submission_does_not_duplicate_its_ai_goal(page, tmp_path, monkeypatch):
     page._inputs = archived_payload(tmp_path)['inputs']
