@@ -134,7 +134,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
                             "Susceptibility (SI)": "viridis",
                         },
                         "z_convention": "elevation, positive up",
-                        "linked_sections": True,
+                        "linked_sections": name == "geosage_volume",
                         "field_metadata": exports.get("viewer_fields", {}),
                     },
                 }
@@ -162,7 +162,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "review_decision": ctx.get("review_decision"),
         "iterations": ctx.settings.get("iterations", []),
         "completion": {
-            "numerical": "complete" if ctx.has("geo_model") else "incomplete",
+            "numerical": "complete" if ctx.has("property_models") else "incomplete",
             "interpretation": "generated" if use_ai and ctx.has("draft_report") and not (ctx.get("draft_report") or {}).get("offline") else "not_run",
             "review": ctx.get("review_decision") or "not_run",
         },

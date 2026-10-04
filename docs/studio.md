@@ -100,12 +100,15 @@ and existing GeoSAGE report agents. The workflow has six separate dependency-bou
 stages: prepare data, compile priors, inversion/reuse, geological model, draft,
 review. Approval occurs before each stage, including before writing and reviewing.
 Generic Gravity/Magnetics and Joint Inversion module forms are independent
-tools; editing their fields does not edit the GeoSAGE JSON configuration.
+tools; editing their fields does not edit the GeoSAGE JSON configuration. Those
+pages display an explicit independence notice while GeoSAGE is selected.
 
 Provider keys are session settings, never configuration fields. The offline
 button ignores provider settings and environment keys. Local reference documents
 use GeoSAGE's existing context handling; Studio's additional RAG/MCP retrieval
 is not implemented for this workflow, so those controls are hidden for GeoSAGE.
+The selected task determines whether report generation and review are enabled,
+even when an imported configuration was originally used for a local run.
 Do not put credentials in JSON configs.
 
 An offline summary is always `needs_review` / `NOT_REVIEWED`. A revised report
@@ -123,8 +126,14 @@ available from View. AQUAH keeps its normal workflow and retrieval controls.
 A run shows separate numerical, interpretation and review states. Local runs do
 not claim an AI review. Solver iterations and data misfit are reported as they
 arrive; the activity bar does not imply a measured percentage or time estimate.
-**View models & compare runs** opens the current result, even before saving it.
-Save it explicitly to retain history after closing the application.
+On completion the workflow opens **Results & report**, with separate numerical,
+interpretation and review states. **View models & compare runs**, **View data fit**
+and **Read interpretation** lead to the current run. Local runs label the last
+action **Read numerical summary**; the fit action is disabled when observation
+and prediction files are absent. **View models & compare runs** also works before saving.
+Save it explicitly to retain history after closing the application. Saving through
+Ctrl+S or Saved Results refreshes this status too. A result from another Project
+cannot be saved into the current Project by a stale workflow button.
 
 In the model viewer, **Linked sections & values** shows plan, east–elevation and
 north–elevation sections. Enter physical coordinates, use arrow keys to step

@@ -70,7 +70,7 @@ class WorkflowSetup(QWidget):
         return 'config_file' if self.task.currentData() == 'invert' else 'source_inversion_dir'
 
     def request(self):
-        return self.goal.text().strip() or {
+        return (self.goal.text().strip() if self.needs_ai else '') or {
             "inspect": "Inspect the existing numerical models and preserve their labels.",
             "invert": "Run the configured joint inversion and summarize its numerical evidence.",
             "interpret": "Interpret these existing results using the supplied geological evidence and review the report.",
@@ -138,6 +138,11 @@ class WorkflowSetup(QWidget):
         payload = {"inputs": self.inputs, "request": self.request(),
                    "output_dir": str(Path(tempfile.gettempdir()) / "geosage-preflight" / "preview"),
                    "api_key": "preview-only" if self.needs_ai else None}
+        self.show_configuration(payload)
+
+    def show_configuration(self, payload):
+        """Display the same resolved inputs and settings sent to the worker."""
+        self.preview.show()
         try:
             payload = self.prepare_payload(payload)
             cfg = configure(payload)
@@ -150,7 +155,13 @@ class WorkflowSetup(QWidget):
                 r, inv = cfg["region"], cfg["inversion"]
                 rows += [("Region (m)", f'E {r["min_e"]}–{r["max_e"]}; N {r["min_n"]}–{r["max_n"]}'),
                          ("Gravity", f'{cfg["data"]["gravity_column"]} / {cfg["data"]["gravity_component"]}'),
-                         ("Magnetic field", f'{inv["field_strength"]} nT; inclination {inv["inclination"]}°; declination {inv["declination"]}°')]
+                         ("Magnetic field", f'{inv["field_strength"]} nT; inclination {inv["inclination"]}°; declination {inv["declination"]}°'),
+                         ("Maximum iterations", inv['optimization']['maxGNCG'])]
+                rows += [(role.replace('_', ' ').title(), cfg['studio_inputs'].get(role) or
+                          str(Path(project['input_dir']) / f'{project["name"]}_{suffix}'))
+                         for role, suffix in FILE_ROLES.items()]
+            else:
+                rows.append(('Core mesh', str(Path(project['source_inversion_dir']) / 'mesh/mesh_core.msh')))
             self.preview.setHtml("<b>Files ready · numerical validation runs at startup</b><table>" + "".join(
                 f"<tr><td>{escape(k)}</td><td>{escape(str(v))}</td></tr>" for k, v in rows) + "</table>")
         except (ValueError, KeyError, OSError) as exc:

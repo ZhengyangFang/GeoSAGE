@@ -67,6 +67,12 @@ def configure(payload):
         raw = json.loads(Path(config_file).read_text(encoding="utf-8-sig"))
     if not isinstance(raw, dict):
         raise ValueError("GeoSAGE configuration must be a JSON object.")
+    for section in ('project', 'run', 'geology', 'region', 'data', 'inversion'):
+        if section in raw and not isinstance(raw[section], dict):
+            raise ValueError(f'Configuration section {section} must be a JSON object.')
+    for section in ('optimization', 'irls'):
+        if section in raw.get('inversion', {}) and not isinstance(raw['inversion'][section], dict):
+            raise ValueError(f'Inversion section {section} must be a JSON object.')
     _reject_credentials(raw)
     source = inputs.get("source_inversion_dir") or raw.get("project", {}).get(
         "source_inversion_dir"
@@ -131,6 +137,8 @@ def configure(payload):
         raise ValueError("AI interpretation requires a session provider key.")
     if task in {"inspect", "invert"}:
         cfg["run"].update(write_reports=False, review_enabled=False)
+    elif task == "interpret":
+        cfg["run"].update(write_reports=True, review_enabled=True)
     if mode not in {"full", "interpret_existing"}:
         raise ValueError(f"Unsupported execution mode: {mode}")
     if mode == "full":
@@ -154,6 +162,7 @@ def configure(payload):
             valid_bounds = False
         if not valid_bounds:
             raise ValueError("Region bounds must be finite numbers with minimum below maximum.")
+        cfg['region'].update(zip(('min_e', 'max_e', 'min_n', 'max_n'), bounds))
     else:
         source = source or project.get("output_dir")
         if not source or not Path(source).is_dir():
