@@ -17,6 +17,7 @@ from typing import Any
 import discretize
 import h5py
 import numpy as np
+from .validation import require_labels, require_real_finite
 
 
 REQUIRED_ARTIFACTS = {
@@ -140,6 +141,8 @@ def load_existing_inversion_result(source_dir: str | Path) -> dict[str, Any]:
     mesh_core = discretize.TensorMesh._readUBC_3DMesh(mesh_path)
     density = np.load(density_path)
     susceptibility = np.load(susc_path)
+    require_real_finite(density, "Archived density")
+    require_real_finite(susceptibility, "Archived susceptibility")
     if density.shape != susceptibility.shape:
         raise ValueError(
             "Archived density and susceptibility shapes differ: "
@@ -179,6 +182,8 @@ def load_existing_inversion_result(source_dir: str | Path) -> dict[str, Any]:
         path = root / OPTIONAL_ARTIFACTS[name]
         if path.is_file():
             loaded[attribute] = loader(path)
+            if name != "mesh":
+                require_real_finite(loaded[attribute], f"Archived {name}")
             paths[f"{name}_path"] = str(path)
 
     for name in ("obs_gravity", "obs_magnetics", "inversion_params", "paras_h5", "topography"):
@@ -239,6 +244,8 @@ def load_existing_geology_result(
 
     unit_ids = np.load(unit_path)
     geo_ids = np.load(geo_path)
+    require_labels(unit_ids, "Archived unit IDs")
+    require_labels(geo_ids, "Archived geo IDs")
     density = inversion_result["dens_core_3d"]
     if unit_ids.shape != density.shape or geo_ids.shape != density.shape:
         raise ValueError(
@@ -250,6 +257,12 @@ def load_existing_geology_result(
         with defs_path.open("r", encoding="utf-8-sig") as handle:
             geo_defs_raw = json.load(handle)
         geo_defs = {int(key): str(value) for key, value in geo_defs_raw.items()}
+        needed = {int(gid) for gid in np.unique(geo_ids) if gid != 0}
+        missing = sorted(needed - geo_defs.keys())
+        if missing:
+            recovered, provenance = _recover_geo_names(root, np.asarray(missing))
+            geo_defs.update(recovered)
+            geo_defs_source = {**geo_defs_source, **provenance, "kind": "json_and_archived_report"}
     else:
         geo_defs, geo_defs_source = _recover_geo_names(root, geo_ids)
 
@@ -333,7 +346,7 @@ def _recover_geo_names(root: Path, geo_ids: np.ndarray) -> tuple[dict[int, str],
 def save_recovered_geology_metadata(result: dict[str, Any], output_dir: str | Path) -> None:
     """Persist recovered names and evidence in the new interpretation only."""
     provenance = result.get("geo_defs_source", {})
-    if provenance.get("kind") != "archived_report":
+    if provenance.get("kind") not in {"archived_report", "json_and_archived_report"}:
         return
     source = Path(result["paths"]["source_inversion_dir"]).resolve()
     output = Path(output_dir).resolve()

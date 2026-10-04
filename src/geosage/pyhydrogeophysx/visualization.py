@@ -16,15 +16,17 @@ def export_results(workflow, output):
     from matplotlib.colors import BoundaryNorm, ListedColormap
     from matplotlib.figure import Figure
     from matplotlib import colormaps, rc_context
+    from geosage.validation import require_labels, require_real_finite
 
     inv = workflow["inversion_result"]
     geo = workflow.get("geology_result") or {}
     mesh = inv["mesh_core"]
     output = Path(output)
     directory = output / "viewer"
-    directory.mkdir(exist_ok=False)
     density = np.asarray(inv["dens_core_3d"])
     susceptibility = np.asarray(inv["susc_core_3d"])
+    require_real_finite(density, "Density model")
+    require_real_finite(susceptibility, "Susceptibility model")
     shape = tuple(mesh.shape_cells)
     if density.shape != shape or susceptibility.shape != shape:
         raise ValueError("Model shape does not match the physical mesh.")
@@ -58,11 +60,16 @@ def export_results(workflow, output):
         ids = np.asarray(ids)
         if ids.shape != shape:
             raise ValueError("Geology labels do not match the physical mesh.")
+        require_labels(ids, "Geo IDs")
+        unit_ids = require_labels(geo["unit_id_3d"], "Unit IDs")
+        if unit_ids.shape != shape:
+            raise ValueError("Unit labels do not match the physical mesh.")
         grid.cell_data["Geo ID"] = ids.ravel(order="F")
         grid.cell_data["Unit ID"] = np.asarray(geo["unit_id_3d"]).ravel(order="F")
         metadata["geo_names"] = {str(k): v for k, v in geo.get("geo_defs", {}).items()}
         fields.append(("Geological groups", ids, "Geo ID", "tab20"))
     model_path = directory / "geosage_models.vtk"
+    directory.mkdir(exist_ok=False)
     grid.save(model_path)
     (directory / "model_metadata.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -177,8 +184,10 @@ def export_results(workflow, output):
             observations = np.loadtxt(observed_path, ndmin=2)
             if observations.shape[1] != 5:
                 raise ValueError(f"{title} observations need five columns: x y z value std.")
+            require_real_finite(observations, f"{title} observations")
             observed = observations[:, 3]
             predicted = np.asarray(predicted).ravel()
+            require_real_finite(predicted, f"{title} predictions")
             if observed.shape != predicted.shape:
                 raise ValueError(f"{title} prediction and observation shapes differ.")
             coordinates = observations[:, :3]

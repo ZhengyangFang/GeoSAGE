@@ -32,13 +32,20 @@ class StudioLLM:
             self._agent = ReportBackend(
                 "geosage", api_key=self.api_key, model=self.model, llm_provider=self.provider
             )
-        return self._agent.query_llm(
-            prompt,
-            system_message=system_message,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            on_text=on_text,
-        )
+        try:
+            response = self._agent.query_llm(
+                prompt,
+                system_message=system_message,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                on_text=on_text,
+            )
+        except Exception as exc:
+            detail = str(exc).replace(str(self.api_key), "[REDACTED]")
+            raise RuntimeError(f"Studio provider failed: {detail}") from None
+        if not isinstance(response, str) or not response.strip():
+            raise RuntimeError("Studio provider returned an empty text response.")
+        return response
 
     def _create(self, *, messages, temperature=0.0, **kwargs):
         system = "\n\n".join(str(m["content"]) for m in messages if m["role"] == "system")
@@ -50,4 +57,7 @@ class StudioLLM:
         from geosage.multi_agent_runner import LLMClient
 
         text = self.query(user_prompt, system_prompt + "\nReturn a JSON object only.", temperature)
-        return LLMClient._safe_json_loads(text)
+        result = LLMClient._safe_json_loads(text)
+        if not isinstance(result, dict):
+            raise ValueError("Studio provider must return a JSON object.")
+        return result

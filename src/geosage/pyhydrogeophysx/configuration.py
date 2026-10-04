@@ -52,6 +52,11 @@ def configure(payload):
     for key, value in inputs.items():
         if value and (not isinstance(value, str) or not Path(value).expanduser().exists()):
             raise ValueError(f"{key} must name one existing local file or folder.")
+        if value:
+            path = Path(value).expanduser()
+            directory = key in {"input_dir", "source_inversion_dir"}
+            if (directory and not path.is_dir()) or (not directory and not path.is_file()):
+                raise ValueError(f"{key} must name a {'folder' if directory else 'file'}.")
     inputs = {k: str(Path(v).expanduser().resolve()) for k, v in inputs.items() if v}
     config_file = inputs.get("config_file")
     raw = deepcopy(payload.get("config") or {})
@@ -139,7 +144,7 @@ def configure(payload):
     protected = [Path(project["input_dir"]).resolve()]
     if source:
         protected.append(Path(source).resolve())
-    if any(output == p or p in output.parents for p in protected):
+    if any(output == p or p in output.parents or output in p.parents for p in protected):
         raise ValueError("Studio output must be outside the input and source inversion folders.")
     project["output_dir"] = str(output / "models")
     project["interpretation_output_dir"] = str(output / "interpretation")
@@ -153,6 +158,14 @@ def configure(payload):
     ):
         if role in inputs:
             cfg["geology"][key] = inputs[role]
+    protected_files = [Path(p) for role, p in inputs.items() if role not in {"input_dir", "source_inversion_dir"}]
+    protected_files += [
+        Path(cfg["geology"][key]).expanduser().resolve()
+        for key in ("unit_defs_csv", "unit_groups_csv", "context_path", "unit_id_npy")
+        if cfg["geology"].get(key)
+    ]
+    if any(output == p or output in p.parents for p in protected_files):
+        raise ValueError("Studio output must not contain any input, configuration or prior files.")
     # Absence of explicit priors uses unsupervised clusters, not invented lithology.
     if cfg["geology"].get("mode") == "csv_manual" and not cfg["geology"].get("unit_defs_csv"):
         cfg["geology"]["mode"] = "gmm_only"

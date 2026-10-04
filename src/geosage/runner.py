@@ -15,6 +15,7 @@ from geosage.existing_results import (
     build_source_manifest,
     load_existing_geology_result,
     load_existing_inversion_result,
+    load_inversion_parameters,
     save_recovered_geology_metadata,
 )
 
@@ -337,6 +338,17 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
             )
 
         project_output = Path(project_cfg["output_dir"]).expanduser().resolve()
+        input_root = Path(project_cfg["input_dir"]).expanduser().resolve()
+        if project_output == input_root or project_output in input_root.parents:
+            raise ValueError("Inversion output must not contain the input folder.")
+        if project_output.exists():
+            if not project_output.is_dir():
+                raise FileExistsError(f"Inversion output is not a directory: {project_output}")
+            if not run_cfg.get("overwrite", False) and any(project_output.iterdir()):
+                raise FileExistsError(
+                    f"Inversion output is not empty: {project_output}. "
+                    "Choose a new output directory or explicitly set run.overwrite=true."
+                )
         project_cfg["output_dir"] = str(project_output)
         source_dir = project_output
         interpretation_dir = project_output
@@ -390,6 +402,11 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]]) -> Dict[str, Any]:
             make_plots=run_cfg.get("make_plots", True),
         )
         source_manifest = build_source_manifest(source_dir)
+        # The solver can resolve aliases, gravity components and region bounds.
+        # Reports must describe the settings actually used, not the request.
+        actual_parameters = load_inversion_parameters(source_dir)
+        inversion_result["inversion_parameters"] = actual_parameters
+        cfg = _archived_parameters_to_config(cfg, actual_parameters)
 
     # ---------- Pseudo-geological interpretation ----------
     if run_cfg.get("run_geology_model", True):

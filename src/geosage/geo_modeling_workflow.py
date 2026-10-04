@@ -19,6 +19,7 @@ from discretize.utils import active_from_xyz
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from scipy import ndimage
 from geosage.paths import data_path, result_path
+from geosage.validation import require_labels, require_real_finite
 
 
 def build_geology_model(
@@ -99,6 +100,8 @@ def build_geology_model(
 
     dens_core_3d = np.load(dens_core_path)
     susc_core_3d = np.load(susc_core_path)
+    require_real_finite(dens_core_3d, "Density model")
+    require_real_finite(susc_core_3d, "Susceptibility model")
     print("dens_core_3d.shape =", dens_core_3d.shape)
     print("susc_core_3d.shape =", susc_core_3d.shape)
 
@@ -144,6 +147,13 @@ def build_geology_model(
 
     # 2) Build unit_id model from CSV ranges or precomputed labels.
     df_unit = pd.read_csv(input_unit)
+    require_labels(df_unit["unit_id"], "Unit definition IDs", positive=True, max_id=32767)
+    if df_unit["unit_id"].duplicated().any():
+        raise ValueError("Unit definition IDs must be unique.")
+    bounds = df_unit[["dens_min", "dens_max", "susc_min", "susc_max"]].to_numpy()
+    require_real_finite(bounds, "Unit definition bounds")
+    if (bounds[:, 0] >= bounds[:, 1]).any() or (bounds[:, 2] >= bounds[:, 3]).any():
+        raise ValueError("Unit definition lower bounds must be less than upper bounds.")
     unit_defs = {}
     for r in df_unit.itertuples(index=False):
         unit_defs[int(r.unit_id)] = {
@@ -161,7 +171,9 @@ def build_geology_model(
     if input_unit_id is not None:
         if not input_unit_id.is_file():
             raise FileNotFoundError(f"Requested unit partition not found: {input_unit_id}")
-        unit_id_3d = np.load(input_unit_id).astype(np.int16, copy=False)
+        raw_labels = np.load(input_unit_id)
+        require_labels(raw_labels, "Unit partition", max_id=32767)
+        unit_id_3d = raw_labels.astype(np.int16, copy=False)
         if unit_id_3d.shape != dens_core_3d.shape:
             raise ValueError(
                 f"unit_id_npy shape mismatch: {unit_id_3d.shape} vs model {dens_core_3d.shape}"
@@ -256,6 +268,12 @@ def build_geology_model(
 
     # 4) Map units to coarser geo groups.
     df_groups = pd.read_csv(input_unit_groups)
+    for column in ("unit_id", "geo_id"):
+        require_labels(df_groups[column], f"Group {column}", positive=True, max_id=32767)
+    if df_groups["unit_id"].duplicated().any():
+        raise ValueError("Each unit ID must have exactly one group mapping.")
+    if (df_groups.groupby("geo_id")["geo_name"].nunique(dropna=False) > 1).any():
+        raise ValueError("Each geo ID must have exactly one name.")
     unit_to_geo = {
         int(r.unit_id): int(r.geo_id)
         for r in df_groups.itertuples(index=False)

@@ -645,14 +645,23 @@ def _normalize_unit_groups_csv(
     csv_text: str,
     unit_stats: List[Dict[str, Any]],
     target_name: str = "",
+    adjustments: Optional[List[str]] = None,
 ) -> str:
+    def note(message):
+        if adjustments is not None:
+            adjustments.append(message)
+
+    def fallback():
+        note("LLM grouping was empty or invalid; deterministic grouping fallback was used.")
+        return _build_fallback_unit_groups_csv(unit_stats_sorted, target_name=target_name)
+
     unit_stats_sorted = sorted(unit_stats, key=lambda x: int(x["unit_id"]))
     unit_ids = [int(s["unit_id"]) for s in unit_stats_sorted]
     if not unit_ids:
         return "unit_id,geo_id,geo_name\n"
 
     if not csv_text or not csv_text.strip():
-        return _build_fallback_unit_groups_csv(unit_stats_sorted, target_name=target_name)
+        return fallback()
 
     by_unit: Dict[int, Tuple[int, str]] = {}
     geo_name_first: Dict[int, str] = {}
@@ -662,11 +671,16 @@ def _normalize_unit_groups_csv(
             if not r:
                 continue
             try:
-                uid = int(float(r.get("unit_id", "")))
-                gid = int(float(r.get("geo_id", "")))
+                raw_uid = float(r.get("unit_id", ""))
+                raw_gid = float(r.get("geo_id", ""))
+                if not raw_uid.is_integer() or not raw_gid.is_integer():
+                    raise ValueError("Non-integer group ID")
+                uid, gid = int(raw_uid), int(raw_gid)
             except Exception:
+                note("An invalid LLM grouping row was discarded; review the resulting mapping.")
                 continue
             if uid not in unit_ids or gid <= 0:
+                note("An unknown or invalid LLM grouping ID was discarded.")
                 continue
             gname = str(r.get("geo_name", "")).strip()
             if uid not in by_unit:
@@ -674,24 +688,26 @@ def _normalize_unit_groups_csv(
             if gname and gid not in geo_name_first:
                 geo_name_first[gid] = gname
     except Exception:
-        return _build_fallback_unit_groups_csv(unit_stats_sorted, target_name=target_name)
+        return fallback()
 
     if not by_unit:
-        return _build_fallback_unit_groups_csv(unit_stats_sorted, target_name=target_name)
+        return fallback()
 
     # Fill missing units into an existing geo group first.
     default_gid = next(iter(by_unit.values()))[0]
     for uid in unit_ids:
         if uid not in by_unit:
+            note(f"LLM grouping omitted unit {uid}; it was assigned to the default group for review.")
             by_unit[uid] = (default_gid, "")
 
     old_geo_ids = sorted({gid for gid, _ in by_unit.values()})
     if not (3 <= len(old_geo_ids) <= 5):
-        return _build_fallback_unit_groups_csv(unit_stats_sorted, target_name=target_name)
+        return fallback()
 
     # Ensure there is a primary target group.
     has_primary = any("primary target" in (name or "").lower() for name in geo_name_first.values())
     if not has_primary:
+        note("A primary target label was assigned by the property-score heuristic; it requires geological review.")
         scores = _target_scores(unit_stats_sorted)
         primary_uid = unit_ids[int(np.argmax(scores))] if scores.size else unit_ids[0]
         primary_gid = by_unit[primary_uid][0]
@@ -935,6 +951,11 @@ def unit_stats_from_unit_id(
         susceptibility_path = paths.get("susceptibility_core_npy") or paths.get("susc_core_npy")
         susceptibility = np.load(susceptibility_path)
     labels = np.load(Path(unit_id_npy))
+    from geosage.validation import require_labels, require_real_finite
+
+    require_labels(labels, "Fixed unit labels", max_id=32767)
+    require_real_finite(density, "Density model")
+    require_real_finite(susceptibility, "Susceptibility model")
     if labels.shape != density.shape or labels.shape != susceptibility.shape:
         raise ValueError(
             "Fixed unit labels must have the same shape as inversion arrays: "
@@ -1735,12 +1756,19 @@ DRAFT REPORT:
 {draft_report}
 """
         result = self.ask_json(prompt, temperature=0.0)
+        if not isinstance(result, dict):
+            raise ValueError("Report review must return a JSON object.")
         decision = str(result.get("decision", "REVISE_REPORT")).upper()
         if decision not in {"ACCEPT", "REVISE_REPORT", "INSUFFICIENT_EVIDENCE"}:
             decision = "REVISE_REPORT"
         issues = result.get("issues", [])
-        if not isinstance(issues, list):
-            issues = []
+        if not isinstance(issues, list) or any(not isinstance(issue, dict) for issue in issues):
+            raise ValueError("Report review issues must be a list of objects.")
+        if decision == "ACCEPT" and any(
+            str(issue.get("severity", "")).lower() in {"major", "critical"}
+            for issue in issues
+        ):
+            decision = "REVISE_REPORT"
         return {
             "decision": decision,
             "summary": str(result.get("summary", "")),
@@ -2335,6 +2363,7 @@ class MultiAgentOrchestrator:
         gmm_modes = {"gmm_bic_auto", "gmm_only"}
         fixed_modes = {"fixed_units_llm_groups", "fixed_units_fixed_groups"}
         unit_stats: List[Dict[str, Any]] = []
+        grouping_adjustments: List[str] = []
         unit_id_path: Optional[Path] = None
         generated_cluster: Optional[Dict[str, Any]] = None
 
@@ -2412,6 +2441,7 @@ class MultiAgentOrchestrator:
                         raw_groups_csv,
                         unit_stats=unit_stats,
                         target_name=geo_cfg.get("target_name", ""),
+                        adjustments=grouping_adjustments,
                     ),
                     encoding="utf-8",
                 )
@@ -2451,6 +2481,7 @@ class MultiAgentOrchestrator:
                         raw_groups_csv,
                         unit_stats=unit_stats,
                         target_name=geo_cfg.get("target_name", ""),
+                        adjustments=grouping_adjustments,
                     ),
                     encoding="utf-8",
                 )
@@ -2489,6 +2520,7 @@ class MultiAgentOrchestrator:
         )
         if unit_stats:
             geology_result["unit_stats"] = unit_stats
+        geology_result["grouping_adjustments"] = list(dict.fromkeys(grouping_adjustments))
         group_path = geo_cfg.get("unit_groups_csv")
         if group_path and Path(str(group_path)).is_file():
             mapping: Dict[int, int] = {}
@@ -2715,7 +2747,8 @@ class MultiAgentOrchestrator:
                 geology_context=context_text,
                 draft_report=draft,
                 deterministic_warnings=target_info.get("unknown_geo_ids", [])
-                + target_info.get("unknown_unit_ids", []),
+                + target_info.get("unknown_unit_ids", [])
+                + geo_result.get("grouping_adjustments", []),
             )
             review_path = output_dir / "reviews" / "review_round_1.json"
             review_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2830,6 +2863,10 @@ class MultiAgentOrchestrator:
         workflow_result["config"] = cfg
         workflow_result["geology_result"] = self._prepare_configured_geology(cfg, workflow_result)
         workflow_result["config"] = cfg
+        (Path(workflow_result["interpretation_output_dir"]) / "effective_config.json").write_text(
+            json.dumps(_redact_trace_value(cfg), ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
         prepared = self._prepare_interpretation_artifacts(cfg, workflow_result)
         if cfg["run"].get("review_enabled", False) or cfg["run"].get("write_reports", True):
             return self._write_configured_report(cfg, workflow_result, user_request, prepared=prepared)

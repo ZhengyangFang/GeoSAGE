@@ -76,6 +76,7 @@ def test_full_mode_still_calls_configured_inversion(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr(runner, "run_joint_inversion", fake_inversion)
     cfg = _config(source, tmp_path / "full_out")
+    cfg["project"]["output_dir"] = str(tmp_path / "full_out")
     cfg["run"].update({"execution_mode": "full", "run_inversion": True})
     result = runner.run_workflow(cfg)
     assert called

@@ -88,19 +88,23 @@ def prepare_data(ctx):
         counts.append(int(inside.sum()))
     # Preserve originals; the existing numerical kernel expects these names.
     stage = Path(ctx.output_dir) / "inputs"
+    originals = [fingerprint(p) for p in files.values()]
     stage.mkdir(exist_ok=False)
-    for role, path in files.items():
-        shutil.copy2(path, stage / f"{name}_{FILE_ROLES[role]}")
+    for (role, path), original in zip(files.items(), originals):
+        staged = stage / f"{name}_{FILE_ROLES[role]}"
+        shutil.copy2(path, staged)
+        if fingerprint(staged)["sha256"] != original["sha256"]:
+            raise RuntimeError(f"Input changed while staging: {path}. Start a new run.")
     project["input_dir"] = str(stage)
     return f"Validated {counts[0]} gravity and {counts[1]} magnetic stations in the study area.", {
-        "field_data": {"files": [fingerprint(p) for p in files.values()], "station_counts": counts}
+        "field_data": {"files": originals, "station_counts": counts}
     }
 
 
 def compile_priors(ctx):
     geo = ctx.config["geology"]
     paths = [
-        Path(geo[k]) for k in ("unit_defs_csv", "unit_groups_csv", "context_path") if geo.get(k)
+        Path(geo[k]) for k in ("unit_defs_csv", "unit_groups_csv", "context_path", "unit_id_npy") if geo.get(k)
     ]
     for path in paths:
         if not path.is_file():
@@ -142,11 +146,11 @@ def build_quasi_geology(ctx):
     result = ctx.get("property_models")
     engine = _orchestrator(ctx)
     result["geology_result"] = engine._prepare_configured_geology(ctx.config, result)
-    if ctx.config["geology"]["mode"] in {"gmm_bic_auto", "fixed_units_llm_groups"}:
-        if not getattr(engine.unit_csv_agent, "interactions", []):
-            ctx.note(
-                "LLM geological naming did not produce a recorded response; deterministic grouping fallback was used."
-            )
+    for warning in (result["geology_result"] or {}).get("grouping_adjustments", []):
+        ctx.note(warning)
+    missing_names = (result["geology_result"] or {}).get("geo_defs_source", {}).get("missing_ids", [])
+    if missing_names:
+        ctx.note(f"Archived geological names are unavailable for IDs {missing_names}; labels were preserved.")
     prepared = engine._prepare_interpretation_artifacts(ctx.config, result)
     exports = export_results(result, Path(ctx.output_dir))
     # Feed the same physical-coordinate figures into the existing report
@@ -214,6 +218,7 @@ def write_report(ctx):
 def review_report(ctx):
     draft = ctx.get("draft_report")
     if draft.get("offline"):
+        ctx.config["run"]["review_enabled"] = False
         ctx.note(
             "Numerical outputs are ready. LLM interpretation and independent review were not performed."
         )
@@ -221,8 +226,8 @@ def review_report(ctx):
             "report_files": {"report_markdown": draft["path"]},
             "review_decision": "NOT_REVIEWED",
         }
+    ctx.config["run"]["review_enabled"] = True
     cfg = deepcopy(ctx.config)
-    cfg["run"]["review_enabled"] = True
     result = _orchestrator(ctx).review_report_draft(cfg, ctx.get("property_models"), draft)
     decision = (result.get("review") or {}).get("decision", "NOT_REVIEWED")
     if decision != "ACCEPT":

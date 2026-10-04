@@ -26,6 +26,13 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         raise ValueError(f"Unsupported Studio provider: {provider}")
     cfg = configure(payload)
     output = Path(payload["output_dir"]).expanduser().resolve()
+    if output.exists():
+        bootstrap = {"UNSAVED", "activity.log", "steering.jsonl"}
+        if not output.is_dir() or any(
+            p.name not in bootstrap or not p.is_file() or p.is_symlink()
+            for p in output.iterdir()
+        ):
+            raise FileExistsError("Studio output already contains files; choose a new run directory.")
     # Host may already create the run directory and its UNSAVED marker.
     # A private reservation prevents two starts from sharing any destinations.
     output.mkdir(parents=True, exist_ok=True)
@@ -74,21 +81,29 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     ]
     field = ctx.get("field_data") or {}
     priors = ctx.get("geological_priors") or {}
-    unchanged = True
-    for original in field.get("files", []) + priors.get("files", []):
+    originals = field.get("files", []) + priors.get("files", [])
+    unchanged = True if originals else None
+    for original in originals:
         try:
             current = fingerprint(original["path"])
             if current["sha256"] != original["sha256"]:
                 unchanged = False
         except OSError:
             unchanged = False
-    if not unchanged:
+    if unchanged is False:
         warnings.append(
             "Source files changed during the run; inspect the provenance before using results."
         )
     complete = ctx.has("report_files") and ctx.ended != "stopped"
     status = "incomplete" if not complete else ("needs_review" if warnings else "success")
     geo = ctx.get("geo_model") or {}
+    property_models = ctx.get("property_models")
+    if property_models:
+        snapshot = Path(property_models["interpretation_output_dir"]) / "effective_config.json"
+        snapshot.write_text(
+            json.dumps(_redact_trace_value(ctx.config), indent=2, default=str, ensure_ascii=False),
+            encoding="utf-8",
+        )
     exports = geo.get("exports", {})
     artifacts = []
     for name, path in {
@@ -140,6 +155,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "schema_version": "1",
         "assistant": "geosage",
         "events": recorded,
+        "progress": events or [],
         "steps": ctx.plan(),
         "inputs": field.get("files", []),
         "priors": priors.get("files", []),
@@ -153,5 +169,9 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
             encoding="utf-8",
         )
     if complete:
-        progress("GeoSAGE complete", 1.0, result["interpretation"])
+        try:
+            progress("GeoSAGE complete", 1.0, result["interpretation"])
+        except Exception:
+            # A disconnected display must not invalidate completed scientific work.
+            pass
     return result

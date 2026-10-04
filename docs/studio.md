@@ -133,6 +133,23 @@ Integration tests run when the optional host package is installed. They cover
 discovery, approvals, stopping, source preservation, coordinate/ID export,
 offline isolation, report review outcomes and a real small SimPEG inversion.
 
+Each Studio run needs a new output folder. Only the host's initial `UNSAVED`,
+`activity.log` and `steering.jsonl` files may already be present. Inputs,
+configuration files and priors must be outside that folder. The command-line
+full workflow also refuses nonempty output folders when `run.overwrite=false`.
+
+Models must contain finite real values. Geological labels must be nonnegative
+integers; newly built models retain the existing int16 format and reject IDs
+above 32767 before casting. Invalid inputs fail explicitly rather than silently
+changing labels. A partial archived name mapping is completed from recorded
+reports where possible, without editing the source archive.
+
+`effective_config.json` records the final geological settings and the physical
+settings actually used by the solver. Deterministic repairs to an LLM grouping
+are disclosed in the result warnings. A review reporting major issues cannot
+mark the report accepted, and an empty provider response is a failure. Source
+integrity is `null` when the run stops before any source inventory is collected.
+
 This repository is code-only. Keep Project folders, input data, inversion
 results, generated VTK, figures, reports, credentials and private configs outside
 the repository. Synthetic test inputs are generated at runtime. Screenshots
