@@ -61,6 +61,12 @@ def prepare_data(ctx):
             + ", ".join(missing)
         )
     counts = []
+    import rasterio
+
+    with rasterio.open(files["topography_file"]) as topography:
+        if not topography.crs:
+            raise ValueError("The topography GeoTIFF needs a coordinate reference system (CRS).")
+        geographic_topography = bool(topography.crs.is_geographic)
     for role, column in (
         ("gravity_file", cfg["data"]["gravity_column"]),
         ("magnetic_file", "TFMA"),
@@ -68,9 +74,11 @@ def prepare_data(ctx):
         table = pd.read_csv(files[role])
         required = ["Easting", "Northing", column]
         if role == "gravity_file":
-            # The current numerical kernel uses the gravity longitude/latitude
-            # pair to establish the projected CRS for geographic topography.
-            required.extend(["Longitude", "Latitude", "Height"])
+            required.append("Height")
+            if geographic_topography:
+                # Geographic rasters need a projected survey CRS. The gravity
+                # longitude/latitude pair establishes it deterministically.
+                required.extend(["Longitude", "Latitude"])
         absent = set(required) - set(table.columns)
         if absent:
             raise ValueError(

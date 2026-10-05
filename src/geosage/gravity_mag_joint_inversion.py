@@ -491,6 +491,9 @@ def run_joint_inversion(
     print(20*"=","loading local topography",20*"=")
     with rasterio.open(input_topo) as src:
         transform = src.transform
+        topo_crs = src.crs
+        if topo_crs is None:
+            raise ValueError("Topography GeoTIFF has no coordinate reference system (CRS).")
         topo_raw = src.read(1)
         width, height = src.width, src.height
         print("GeoTIFF CRS:", src.crs)
@@ -536,12 +539,24 @@ def run_joint_inversion(
     lat_topo_flat = lat_topo_raw.ravel()
     z_topo_flat = topo_raw.ravel()
 
-    if 'transformer' not in locals() or transformer is None:
-        raise ValueError("UTM transformer is undefined; please provide Longitude/Latitude in gravity data (or specify a projection) so topography can be projected.")
-
-    easting_topo_flat, northing_topo_flat = transformer.transform(
-        lon_topo_flat, lat_topo_flat
-    )
+    if topo_crs.is_geographic:
+        if 'crs_utm' not in locals() or crs_utm is None:
+            raise ValueError(
+                "Geographic topography needs Longitude/Latitude in gravity data "
+                "so its projected survey CRS can be determined."
+            )
+        topo_transformer = Transformer.from_crs(topo_crs, crs_utm, always_xy=True)
+        easting_topo_flat, northing_topo_flat = topo_transformer.transform(
+            lon_topo_flat, lat_topo_flat
+        )
+    elif 'crs_utm' in locals() and crs_utm is not None and topo_crs != crs_utm:
+        topo_transformer = Transformer.from_crs(topo_crs, crs_utm, always_xy=True)
+        easting_topo_flat, northing_topo_flat = topo_transformer.transform(
+            lon_topo_flat, lat_topo_flat
+        )
+    else:
+        # A projected raster already in the survey/mesh CRS needs no reprojection.
+        easting_topo_flat, northing_topo_flat = lon_topo_flat, lat_topo_flat
 
     mask_mesh = (
         (easting_topo_flat >= xmin_mesh) & (easting_topo_flat <= xmax_mesh) &

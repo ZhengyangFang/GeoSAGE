@@ -281,7 +281,7 @@ def inspect_survey_folder(path: str | Path) -> dict:
     magnetic = _csv_extent(Path(files["magnetic_file"]))
     _validate_numeric_columns(
         Path(files["gravity_file"]),
-        ("Easting", "Northing", "Longitude", "Latitude", "Height"),
+        ("Easting", "Northing", "Height"),
     )
     _validate_numeric_columns(
         Path(files["magnetic_file"]),
@@ -299,6 +299,11 @@ def inspect_survey_folder(path: str | Path) -> dict:
         raise ValueError(
             "The topography uses geographic coordinates, so the gravity or magnetic CSV needs "
             "finite Longitude and Latitude columns to determine the projected survey CRS."
+        )
+    if topography.get("is_geographic"):
+        _validate_numeric_columns(
+            Path(files["gravity_file"]),
+            ("Longitude", "Latitude"),
         )
     region = {
         key: core_mesh["bounds"][key]
@@ -395,8 +400,13 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
     files = inspection["files"]
     _validate_numeric_columns(
         Path(files["gravity_file"]),
-        ("Easting", "Northing", "Longitude", "Latitude", "Height", gravity_column),
+        ("Easting", "Northing", "Height", gravity_column),
     )
+    if inspection.get("topography", {}).get("is_geographic"):
+        _validate_numeric_columns(
+            Path(files["gravity_file"]),
+            ("Longitude", "Latitude"),
+        )
     mesh_bounds = inspection.get("mesh", {}).get("bounds")
     configured_region = {key: values[key] for key in ("min_e", "max_e", "min_n", "max_n")}
     if mesh_bounds and not _contains(mesh_bounds, configured_region):

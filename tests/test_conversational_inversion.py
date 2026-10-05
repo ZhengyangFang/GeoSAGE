@@ -126,7 +126,36 @@ def test_scan_rejects_missing_runner_columns_before_inversion(tmp_path):
     (folder / "Demo_gravity_data.csv").write_text(
         "Easting,Northing,ISO\n125,225,1\n", encoding="utf-8"
     )
-    with pytest.raises(ValueError, match="Longitude, Latitude, Height"):
+    with pytest.raises(ValueError, match="Height"):
+        inspect_survey_folder(folder)
+
+
+def test_projected_topography_does_not_require_geographic_csv_columns(tmp_path):
+    folder = _survey(tmp_path / "raw")
+    (folder / "Demo_gravity_data.csv").write_text(
+        "Easting,Northing,Height,ISO\n125,225,100,1\n300,500,110,2\n",
+        encoding="utf-8",
+    )
+    found = inspect_survey_folder(folder)
+    config = build_configuration(found, {
+        "field_strength": 50000, "inclination": 60, "declination": 5,
+    })
+    assert config["project"]["region_observations"] == {"gravity": 1, "magnetic": 1}
+
+
+def test_geographic_topography_requires_gravity_geographic_columns(tmp_path):
+    folder = _survey(tmp_path / "raw")
+    (folder / "Demo_gravity_data.csv").write_text(
+        "Easting,Northing,Height,ISO\n125,225,100,1\n300,500,110,2\n",
+        encoding="utf-8",
+    )
+    with rasterio.open(
+        folder / "Demo_topo.tif", "w", driver="GTiff", height=10, width=10,
+        count=1, dtype="float32", crs="EPSG:4326",
+        transform=from_origin(-124, 43, 0.01, 0.01),
+    ) as dataset:
+        dataset.write(np.ones((10, 10), dtype="float32"), 1)
+    with pytest.raises(ValueError, match="Longitude and Latitude"):
         inspect_survey_folder(folder)
 
 
