@@ -28,10 +28,12 @@ def test_legacy_regularization_and_config_isolation(tmp_path):
 
 def test_archived_dictionary_bounds_override_defaults():
     cfg = runner._archived_parameters_to_config(runner.load_config({}), {
-        "inv_bound": {"grv_lb": -2, "grv_ub": 3, "mag_lb": 0, "mag_ub": 0.1}
+        "inv_bound": {"grv_lb": -2, "grv_ub": 3, "mag_lb": 0, "mag_ub": 0.1},
+        "target_magnetic_column": "TMI",
     })
     assert cfg["inversion"]["grv_bounds"] == [-2, 3]
     assert cfg["inversion"]["mag_bounds"] == [0, 0.1]
+    assert cfg["data"]["magnetic_column"] == "TMI"
 
 
 @pytest.mark.parametrize("explicit", [True, False])

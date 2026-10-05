@@ -76,7 +76,7 @@ def test_configuration_editor_preserves_source_and_advanced_settings(tmp_path, s
 
     def edit_dialog():
         dialog = app.activeModalWidget()
-        values = ('Demo', '0', '10', '0', '20', 'Gz', 'gz', '50000', '60', '0')
+        values = ('Demo', '0', '10', '0', '20', 'Gz', 'TFMA', 'gz', '50000', '60', '0')
         for edit, value in zip(dialog.findChildren(QLineEdit), values):
             edit.setText(value)
         dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.Save).click()

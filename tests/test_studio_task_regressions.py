@@ -216,7 +216,9 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
             'start_confirmed_inversion'} <= names
     scanned = page.agent_apply('prepare_inversion_folder', {'path': str(folder)})
     assert scanned['status'] == 'needs_input'
-    assert page._inputs == {'input_dir': str(folder.resolve())}
+    assert page._inputs['input_dir'] == str(folder.resolve())
+    assert {"gravity_file", "magnetic_file", "topography_file", "mesh_file",
+            "core_mesh_file"} <= set(page._inputs)
     ready = page.agent_apply('set_inversion_parameters', {
         'min_e': 100, 'max_e': 200, 'min_n': 200, 'max_n': 300,
         'field_strength': 50000, 'inclination': 60, 'declination': 5,

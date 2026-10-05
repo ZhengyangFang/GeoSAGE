@@ -20,12 +20,41 @@ REQUIRED_ROLES = (
     "gravity_file", "magnetic_file", "topography_file", "mesh_file", "core_mesh_file"
 )
 
+GRAVITY_COLUMN_ALIASES = (
+    "ISO", "CBA", "SBA", "FAA", "OG", "GZZ", "gravity", "gravity_anomaly",
+    "bouguer", "bouguer_anomaly", "bouguer_residual",
+)
+MAGNETIC_COLUMN_ALIASES = (
+    "TFMA", "TMI", "magnetic_anomaly", "total_field",
+    "total_magnetic_intensity", "mag",
+)
+NON_MEASUREMENT_COLUMNS = {
+    "easting", "northing", "longitude", "latitude", "height", "elevation",
+    "x", "y", "z", "id", "index", "station", "station_id", "line", "line_id",
+}
 
-def _match_files(folder: Path) -> tuple[dict[str, str], str]:
+
+def _preferred_named(paths: list[Path], words: tuple[str, ...]) -> list[Path]:
+    return [path for path in paths if any(word in path.stem.casefold() for word in words)]
+
+
+def _match_files(
+    folder: Path, role_overrides: dict[str, str | Path] | None = None
+) -> tuple[dict[str, str], str]:
+    """Resolve conventional names first, then discover unambiguous semantic roles."""
     files = [p for p in folder.iterdir() if p.is_file()]
     matches: dict[str, str] = {}
     prefixes: list[str] = []
+    for role, value in (role_overrides or {}).items():
+        if role not in ROLE_SUFFIXES or not value:
+            continue
+        candidate = Path(value).expanduser().resolve()
+        if not candidate.is_file():
+            raise ValueError(f"Explicit {role} does not exist: {candidate}")
+        matches[role] = str(candidate)
     for role, suffix in ROLE_SUFFIXES.items():
+        if role in matches:
+            continue
         candidates = [p for p in files if p.name.lower().endswith(suffix)]
         if len(candidates) > 1:
             raise ValueError(f"More than one candidate was found for {role}.")
@@ -35,11 +64,92 @@ def _match_files(folder: Path) -> tuple[dict[str, str], str]:
             prefixes.append(path.name[: -len(suffix)])
     required_prefixes = {
         Path(matches[role]).name[: -len(ROLE_SUFFIXES[role])].casefold()
-        for role in REQUIRED_ROLES if role in matches
+        for role in REQUIRED_ROLES
+        if role in matches and Path(matches[role]).name.lower().endswith(ROLE_SUFFIXES[role])
     }
-    if len(required_prefixes) > 1:
-        raise ValueError("The required survey files do not share one project prefix.")
-    return matches, (prefixes[0] if required_prefixes else folder.name)
+
+    used = {Path(value).resolve() for value in matches.values()}
+    if "topography_file" not in matches:
+        candidates = [p for p in files if p.suffix.casefold() in {".tif", ".tiff"} and p.resolve() not in used]
+        preferred = _preferred_named(candidates, ("topo", "terrain", "surface", "dem"))
+        selected = preferred if len(preferred) == 1 else candidates
+        if len(selected) == 1:
+            matches["topography_file"] = str(selected[0].resolve())
+            used.add(selected[0].resolve())
+
+    mesh_roles = [role for role in ("mesh_file", "core_mesh_file") if role not in matches]
+    mesh_candidates = [p for p in files if p.suffix.casefold() == ".msh" and p.resolve() not in used]
+    if mesh_roles:
+        core_named = _preferred_named(mesh_candidates, ("core", "inner", "roi", "active"))
+        if "core_mesh_file" in mesh_roles and len(core_named) == 1:
+            matches["core_mesh_file"] = str(core_named[0].resolve())
+            used.add(core_named[0].resolve())
+            mesh_candidates.remove(core_named[0])
+            mesh_roles.remove("core_mesh_file")
+        full_named = _preferred_named(mesh_candidates, ("full", "domain", "global"))
+        if "mesh_file" in mesh_roles and len(full_named) == 1:
+            matches["mesh_file"] = str(full_named[0].resolve())
+            used.add(full_named[0].resolve())
+            mesh_candidates.remove(full_named[0])
+            mesh_roles.remove("mesh_file")
+        if len(mesh_roles) == 2 and len(mesh_candidates) == 2:
+            summaries = sorted(
+                ((_ubc_mesh_summary(path)["cells"], path) for path in mesh_candidates),
+                key=lambda item: item[0], reverse=True,
+            )
+            if summaries[0][0] != summaries[1][0]:
+                matches["mesh_file"] = str(summaries[0][1].resolve())
+                matches["core_mesh_file"] = str(summaries[1][1].resolve())
+                mesh_roles.clear()
+        if len(mesh_roles) == 1 and len(mesh_candidates) == 1:
+            matches[mesh_roles[0]] = str(mesh_candidates[0].resolve())
+
+    survey_roles = [role for role in ("gravity_file", "magnetic_file") if role not in matches]
+    survey_candidates: list[tuple[Path, dict]] = []
+    for candidate in files:
+        if candidate.suffix.casefold() != ".csv" or candidate.resolve() in used:
+            continue
+        try:
+            survey_candidates.append((candidate, _csv_extent(candidate)))
+        except ValueError:
+            continue
+    if survey_roles:
+        for role, words in (
+            ("gravity_file", ("gravity", "grav")),
+            ("magnetic_file", ("magnetic", "mag")),
+        ):
+            if role not in survey_roles:
+                continue
+            named = [(path, summary) for path, summary in survey_candidates
+                     if any(word in path.stem.casefold() for word in words)]
+            if len(named) == 1:
+                matches[role] = str(named[0][0].resolve())
+                survey_candidates.remove(named[0])
+                survey_roles.remove(role)
+        if len(survey_roles) == 2 and len(survey_candidates) == 2:
+            gravity_like = [item for item in survey_candidates if _detect_measurement_column(
+                item[1], GRAVITY_COLUMN_ALIASES
+            )]
+            magnetic_like = [item for item in survey_candidates if _detect_measurement_column(
+                item[1], MAGNETIC_COLUMN_ALIASES
+            )]
+            if len(gravity_like) == 1 and len(magnetic_like) == 1 and gravity_like[0] != magnetic_like[0]:
+                matches["gravity_file"] = str(gravity_like[0][0].resolve())
+                matches["magnetic_file"] = str(magnetic_like[0][0].resolve())
+                survey_roles.clear()
+            else:
+                with_height = [item for item in survey_candidates
+                               if "height" in {c.casefold() for c in item[1]["columns"]}]
+                without_height = [item for item in survey_candidates if item not in with_height]
+                if len(with_height) == 1 and len(without_height) == 1:
+                    matches["gravity_file"] = str(with_height[0][0].resolve())
+                    matches["magnetic_file"] = str(without_height[0][0].resolve())
+                    survey_roles.clear()
+        if len(survey_roles) == 1 and len(survey_candidates) == 1:
+            matches[survey_roles[0]] = str(survey_candidates[0][0].resolve())
+
+    project = prefixes[0] if len(required_prefixes) == 1 else folder.name
+    return matches, project
 
 
 def _csv_extent(path: Path) -> dict:
@@ -58,7 +168,15 @@ def _csv_extent(path: Path) -> dict:
         max_lon = max_lat = -math.inf
         geographic_count = 0
         count = 0
+        data_rows = 0
+        numeric = {name: True for name in fields if name}
         for row in reader:
+            data_rows += 1
+            for name in numeric:
+                try:
+                    numeric[name] = numeric[name] and math.isfinite(float(row[name]))
+                except (TypeError, ValueError, KeyError):
+                    numeric[name] = False
             try:
                 e, n = float(row[east]), float(row[north])
             except (TypeError, ValueError, KeyError):
@@ -81,6 +199,7 @@ def _csv_extent(path: Path) -> dict:
         raise ValueError(f"{path.name} contains no finite Easting/Northing rows.")
     result = {
         "rows": count, "columns": fields,
+        "numeric_columns": [name for name in fields if data_rows and numeric.get(name, False)],
         "extent": {"min_e": min_e, "max_e": max_e, "min_n": min_n, "max_n": max_n},
     }
     if geographic_count:
@@ -89,6 +208,25 @@ def _csv_extent(path: Path) -> dict:
             "min_lat": min_lat, "max_lat": max_lat,
         }
     return result
+
+
+def _detect_measurement_column(summary: dict, aliases: tuple[str, ...]) -> str | None:
+    lookup = {name.casefold(): name for name in summary.get("columns", [])}
+    for alias in aliases:
+        if alias.casefold() in lookup:
+            return lookup[alias.casefold()]
+    candidates = [name for name in summary.get("numeric_columns", [])
+                  if name.casefold() not in NON_MEASUREMENT_COLUMNS
+                  and not name.casefold().startswith("unnamed")]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _resolve_column(summary: dict, requested: str, label: str) -> str:
+    lookup = {name.casefold(): name for name in summary.get("columns", [])}
+    resolved = lookup.get(str(requested).strip().casefold())
+    if not resolved:
+        raise ValueError(f"{label} column '{requested}' is not in the selected CSV.")
+    return resolved
 
 
 def _validate_numeric_columns(path: Path, required: tuple[str, ...]) -> None:
@@ -266,27 +404,29 @@ def _rows_in_region(path: Path, region: dict) -> int:
         return count
 
 
-def inspect_survey_folder(path: str | Path) -> dict:
+def inspect_survey_folder(
+    path: str | Path, role_overrides: dict[str, str | Path] | None = None
+) -> dict:
     """Identify files and evidence extents without guessing physical parameters."""
     if not str(path).strip():
         raise ValueError("Provide the raw survey folder path.")
     folder = Path(path).expanduser().resolve()
     if not folder.is_dir():
         raise ValueError(f"Survey folder does not exist: {folder}")
-    files, project = _match_files(folder)
+    files, project = _match_files(folder, role_overrides)
     missing = [role for role in REQUIRED_ROLES if role not in files]
     if missing:
-        raise ValueError("Missing required survey files: " + ", ".join(missing))
+        raise ValueError(
+            "Could not identify required survey roles: " + ", ".join(missing)
+            + ". Rename them descriptively or provide the file paths explicitly."
+        )
     gravity = _csv_extent(Path(files["gravity_file"]))
     magnetic = _csv_extent(Path(files["magnetic_file"]))
     _validate_numeric_columns(
         Path(files["gravity_file"]),
         ("Easting", "Northing", "Height"),
     )
-    _validate_numeric_columns(
-        Path(files["magnetic_file"]),
-        ("Easting", "Northing", "TFMA"),
-    )
+    _validate_numeric_columns(Path(files["magnetic_file"]), ("Easting", "Northing"))
     mesh = _ubc_mesh_summary(Path(files["mesh_file"]))
     core_mesh = _ubc_mesh_summary(Path(files["core_mesh_file"]))
     topography = _topography_summary(
@@ -324,13 +464,13 @@ def inspect_survey_folder(path: str | Path) -> dict:
         raise ValueError("The core mesh contains no usable gravity or magnetic observations.")
     if spatial_checks["topography_covers_full_mesh"] is False:
         raise ValueError("The projected topography does not cover the full inversion mesh.")
-    gravity_candidates = [
-        name for name in gravity["columns"]
-        if name.upper() in {"ISO", "CBA", "SBA", "FAA", "OG"}
-    ]
-    gravity_column = "ISO" if "ISO" in gravity_candidates else (
-        gravity_candidates[0] if len(gravity_candidates) == 1 else None
-    )
+    gravity_column = _detect_measurement_column(gravity, GRAVITY_COLUMN_ALIASES)
+    magnetic_column = _detect_measurement_column(magnetic, MAGNETIC_COLUMN_ALIASES)
+    missing_parameters = ["field_strength", "inclination", "declination"]
+    if not gravity_column:
+        missing_parameters.append("gravity_column")
+    if not magnetic_column:
+        missing_parameters.append("magnetic_column")
     return {
         "folder": str(folder), "project": project, "files": files,
         "gravity": gravity, "magnetic": magnetic,
@@ -338,10 +478,11 @@ def inspect_survey_folder(path: str | Path) -> dict:
         "spatial_checks": spatial_checks,
         "detected": {
             "gravity_column": gravity_column,
+            "magnetic_column": magnetic_column,
             "region": region,
             "region_source": "core_mesh_file",
         },
-        "missing_parameters": ["field_strength", "inclination", "declination"],
+        "missing_parameters": missing_parameters,
         "method_defaults": {
             "gravity_component": "gz", "std_grv": 0.25, "std_mag": 10.0,
             "flight_height_ft": 1000.0, "max_iterations": 50,
@@ -395,12 +536,22 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
     gravity_column = str(parameters.get("gravity_column") or inspection["detected"].get("gravity_column") or "").strip()
     if not gravity_column:
         raise ValueError("Choose the gravity data column.")
-    if gravity_column not in inspection["gravity"]["columns"]:
-        raise ValueError(f"Gravity column '{gravity_column}' is not in the gravity CSV.")
+    gravity_column = _resolve_column(inspection["gravity"], gravity_column, "Gravity")
+    magnetic_column = str(
+        parameters.get("magnetic_column")
+        or inspection["detected"].get("magnetic_column") or ""
+    ).strip()
+    if not magnetic_column:
+        raise ValueError("Choose the magnetic data column.")
+    magnetic_column = _resolve_column(inspection["magnetic"], magnetic_column, "Magnetic")
     files = inspection["files"]
     _validate_numeric_columns(
         Path(files["gravity_file"]),
         ("Easting", "Northing", "Height", gravity_column),
+    )
+    _validate_numeric_columns(
+        Path(files["magnetic_file"]),
+        ("Easting", "Northing", magnetic_column),
     )
     if inspection.get("topography", {}).get("is_geographic"):
         _validate_numeric_columns(
@@ -438,6 +589,7 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
         "region": {key: values[key] for key in ("min_e", "max_e", "min_n", "max_n")},
         "data": {
             "gravity_column": gravity_column,
+            "magnetic_column": magnetic_column,
             "gravity_component": gravity_component,
             "std_grv": optional["std_grv"], "std_mag": optional["std_mag"],
             "flight_height_ft": optional["flight_height_ft"],

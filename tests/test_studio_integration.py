@@ -208,6 +208,7 @@ def test_full_adapter_matches_direct_synthetic_inversion(tmp_path, monkeypatch):
         "config": {
             "project": {"name": "Tiny", "input_dir": str(tmp_path / "input")},
             "region": dict(min_e=500100, max_e=500500, min_n=4300100, max_n=4300500),
+            "data": {"magnetic_column": "MagneticResidual"},
             "inversion": {
                 "optimization": {"maxGNCG": 1, "maxCG": 10},
                 "irls": {"maxIRLSiter": 0},

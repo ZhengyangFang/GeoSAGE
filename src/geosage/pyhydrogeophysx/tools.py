@@ -69,7 +69,7 @@ def prepare_data(ctx):
         geographic_topography = bool(topography.crs.is_geographic)
     for role, column in (
         ("gravity_file", cfg["data"]["gravity_column"]),
-        ("magnetic_file", "TFMA"),
+        ("magnetic_file", cfg["data"].get("magnetic_column", "TFMA")),
     ):
         table = pd.read_csv(files[role])
         required = ["Easting", "Northing", column]

@@ -40,6 +40,7 @@ from simpeg import (
 # ------------------------------------------------------------------
 DEFAULT_SELECT_REGION = [510000, 535000, 4290000, 4320000]  # min_e, max_e, min_n, max_n
 DEFAULT_TARGET_GRV_DATA = "ISO"   # Options: CBA, FAA, ISO, Gzz
+DEFAULT_TARGET_MAG_DATA = "TFMA"
 DEFAULT_GRAVITY_COMPONENT = "gz"  # Options: gx, gy, gz, gxx, gxy, gxz, gyy, gyz, gzz
 
 # Gravity component units mapping
@@ -97,6 +98,7 @@ def run_joint_inversion(
     output_dir: str | Path | None = None,
     select_region: list[float] | tuple[float, float, float, float] | None = None,
     target_grv_data: str = DEFAULT_TARGET_GRV_DATA,
+    target_mag_data: str = DEFAULT_TARGET_MAG_DATA,
     gravity_component: str = DEFAULT_GRAVITY_COMPONENT,
     std_grv: float = DEFAULT_STD_GRV,
     std_mag: float = DEFAULT_STD_MAG,
@@ -699,8 +701,25 @@ def run_joint_inversion(
     else:
         raise ValueError("Magnetic data needs Easting/Northing or Longitude/Latitude columns.")
 
-    # Extract TFMA (total field magnetic anomaly)
-    tfma_mag_raw = df_mag["TFMA"].to_numpy()
+    mag_columns = {str(column).strip().casefold(): column for column in df_mag.columns}
+    requested_mag = str(target_mag_data).strip()
+    magnetic_aliases = [requested_mag]
+    if requested_mag.casefold() == DEFAULT_TARGET_MAG_DATA.casefold():
+        magnetic_aliases.extend([
+            "TMI", "magnetic_anomaly", "total_field", "total_magnetic_intensity", "mag",
+        ])
+    target_mag_data = next(
+        (str(mag_columns[name.casefold()]) for name in magnetic_aliases if name.casefold() in mag_columns),
+        None,
+    )
+    if target_mag_data is None:
+        raise KeyError(
+            f"Magnetic column '{requested_mag}' not found. "
+            f"Tried aliases: {magnetic_aliases}. Available columns: {list(df_mag.columns)}"
+        )
+    if target_mag_data != requested_mag:
+        print(f"[WARN] Magnetic column '{requested_mag}' not found; using '{target_mag_data}'.")
+    magnetic_obs_raw = df_mag[target_mag_data].to_numpy()
 
     mask_mag = (
         (easting_mag_raw > min_e) & (easting_mag_raw < max_e) &
@@ -708,7 +727,7 @@ def run_joint_inversion(
     )
     easting_mag = easting_mag_raw[mask_mag]
     northing_mag = northing_mag_raw[mask_mag]
-    tfma_mag = tfma_mag_raw[mask_mag]
+    magnetic_obs = magnetic_obs_raw[mask_mag]
 
     if easting_mag.size == 0:
         raise ValueError("No magnetic points found in select_region.")
@@ -716,7 +735,7 @@ def run_joint_inversion(
     data_mag_ori = np.zeros((easting_mag.shape[0], 4), dtype=float)
     data_mag_ori[:, 0] = easting_mag
     data_mag_ori[:, 1] = northing_mag
-    data_mag_ori[:, 3] = tfma_mag
+    data_mag_ori[:, 3] = magnetic_obs
 
     if "Height" in df_mag.columns:
         height_mag_raw   = np.array(df_mag["Height"].values)
@@ -812,8 +831,8 @@ def run_joint_inversion(
         )
         mappable = mm[0] if isinstance(mm, (tuple, list)) else mm
         cbar = fig.colorbar(mappable, ax=ax, fraction=0.046, pad=0.02)
-        cbar.set_label("TMI (nT)")
-        ax.set_title("Observed Magnetic (TMI)")
+        cbar.set_label(f"{target_mag_data} (nT)")
+        ax.set_title(f"Observed Magnetic ({target_mag_data})")
         ax.set_xlabel("Easting (m)")
         ax.set_ylabel("Northing (m)")
         ax.set_aspect("equal", adjustable="box")
@@ -872,6 +891,7 @@ def run_joint_inversion(
         "select_region": [float(x) for x in select_region],
         "gravity_component": gravity_component,
         "target_gravity_column": target_grv_data,
+        "target_magnetic_column": target_mag_data,
         "std_grv": float(std_grv),
         "std_mag": float(std_mag),
         "std_grv_relative": bool(std_grv_relative),

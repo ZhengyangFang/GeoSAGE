@@ -427,6 +427,7 @@ Create `configs/hannah_full.json`:
   },
   "data": {
     "gravity_column": "ISO",
+    "magnetic_column": "TFMA",
     "gravity_component": "gz",
     "std_grv": 0.25,
     "std_mag": 10.0,

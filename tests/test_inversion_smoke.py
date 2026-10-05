@@ -25,7 +25,9 @@ def test_small_joint_inversion_writes_loadable_core(tmp_path):
     survey = pd.DataFrame({"Easting": x, "Northing": y, "Longitude": lon,
                            "Latitude": lat, "Height": 100.0})
     survey.assign(ISO=[0.1, 0.2, 0.15, 0.3]).to_csv(input_dir / "Tiny_gravity_data.csv", index=False)
-    survey.assign(TFMA=[10., 20., 15., 30.]).to_csv(input_dir / "Tiny_magnetic_data.csv", index=False)
+    survey.assign(MagneticResidual=[10., 20., 15., 30.]).to_csv(
+        input_dir / "Tiny_magnetic_data.csv", index=False
+    )
     west, south = to_lonlat.transform(499900, 4299900)
     east, north = to_lonlat.transform(500700, 4300700)
     with rasterio.open(input_dir / "Tiny_topo.tif", "w", driver="GTiff",
@@ -34,6 +36,7 @@ def test_small_joint_inversion_writes_loadable_core(tmp_path):
         dst.write(np.zeros((20, 20), dtype=np.float32), 1)
     result = run_joint_inversion(project_name="Tiny", input_dir=input_dir,
         output_dir=tmp_path / "output", select_region=[500100, 500500, 4300100, 4300500],
+        target_mag_data="MagneticResidual",
         maxGNCG=1, maxCG=10, maxIRLSiter=0, reg_grv_norm=(2, 2, 2, 2),
         reg_mag_norm=(2, 2, 2, 2), make_plots=False)
     for key in ("dens_core_3d", "susc_core_3d"):

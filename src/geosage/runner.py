@@ -40,6 +40,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "data": {
         "gravity_column": "ISO",
+        "magnetic_column": "TFMA",
         "gravity_component": "gz",  # Options: gx, gy, gz, gxx, gxy, gxz, gyy, gyz, gzz
         "std_grv": 0.25,
         "std_mag": 10.0,
@@ -190,6 +191,7 @@ def _archived_parameters_to_config(
     scalar_data = {
         "gravity_component": "gravity_component",
         "target_gravity_column": "gravity_column",
+        "target_magnetic_column": "magnetic_column",
         "std_grv": "std_grv",
         "std_mag": "std_mag",
         "std_grv_relative": "std_grv_relative",
@@ -367,6 +369,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]], *, progress_callback=
             output_dir=project_output,
             select_region=select_region,
             target_grv_data=data_cfg["gravity_column"],
+            target_mag_data=data_cfg.get("magnetic_column", "TFMA"),
             gravity_component=data_cfg.get("gravity_component", "gz"),
             std_grv=data_cfg["std_grv"],
             std_mag=data_cfg["std_mag"],

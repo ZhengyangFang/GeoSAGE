@@ -119,15 +119,24 @@ and inversion settings. Existing configs retain their workspace-relative path ru
 Use **Create / edit inversion configuration** to edit physical settings for this run;
 imported advanced settings are retained and the original JSON is not modified.
 **View all resolved parameters** shows the complete effective configuration.
-Supply an input folder with these names, or assign the five individual roles:
+For the conversational route, files may use any names. GeoSAGE first honors the
+conventional names below, then uses descriptive filenames and file contents to
+identify the five roles. If more than one assignment is possible, the assistant
+asks for explicit paths instead of guessing. The numerical runner stages read-only
+copies under conventional names, so this discovery does not change the solver.
 
 | File | Required contents |
 |---|---|
-| `<project>_gravity_data.csv` | Easting, Northing, Longitude, Latitude, Height, configured gravity column |
-| `<project>_magnetic_data.csv` | Easting, Northing, Longitude, Latitude, TFMA |
-| `<project>_topo.tif` | GeoSAGE-compatible georeferenced topography |
+| `<project>_gravity_data.csv` | Easting, Northing, Height and a selected numeric gravity observation column; Longitude/Latitude are needed only with geographic topography |
+| `<project>_magnetic_data.csv` | Easting, Northing and a selected numeric magnetic observation column |
+| `<project>_topo.tif` | A georeferenced geographic or projected GeoTIFF covering the mesh |
 | `<project>_mesh.msh` | UBC inversion mesh |
 | `<project>_mesh_core.msh` | UBC core mesh |
+
+Common observation names such as ISO, CBA, TFMA and TMI are recognized. A single
+other numeric measurement column is also detected. When a CSV has several possible
+measurement columns, the conversation asks which one to use and records that exact
+choice in the run configuration and audit metadata.
 
 Inputs are copied into the new run before invoking the original SimPEG kernel.
 Source files are hashed before and after processing. A run cannot overwrite an

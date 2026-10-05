@@ -186,11 +186,19 @@ class WorkflowSetup(QWidget):
     def agent_actions(self):
         """Actions exposed to the host's conversational assistant."""
         return [
-            {'name': 'prepare_inversion_folder', 'args': {'path': 'str'},
-             'desc': ('Scan a raw GeoSAGE survey folder locally; validate CSV observations, parse the '
+            {'name': 'prepare_inversion_folder',
+             'args': {'path': 'str',
+                      'gravity_file': 'str (optional when discovery is ambiguous)',
+                      'magnetic_file': 'str (optional when discovery is ambiguous)',
+                      'topography_file': 'str (optional when discovery is ambiguous)',
+                      'mesh_file': 'str (optional when discovery is ambiguous)',
+                      'core_mesh_file': 'str (optional when discovery is ambiguous)'},
+             'desc': ('Scan a raw survey folder locally; identify survey roles from file content and '
+                      'descriptive names, validate CSV observations, parse the '
                       'full and core UBC meshes, read GeoTIFF bounds/CRS, check spatial coverage, and '
                       'derive the inversion region from the core mesh. Lists only physical parameters '
-                      'that still need the user and does not run anything.')},
+                      'that still need the user and does not run anything. Explicit role paths resolve '
+                      'ambiguous folders without renaming source files.')},
             {'name': 'set_inversion_parameters',
              'args': {'min_e': 'number (optional; core-mesh minimum)',
                       'max_e': 'number (optional; core-mesh maximum)',
@@ -198,6 +206,7 @@ class WorkflowSetup(QWidget):
                       'max_n': 'number (optional; core-mesh maximum)',
                       'field_strength': 'number (nT)', 'inclination': 'number (degrees)',
                       'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
+                      'magnetic_column': 'str (optional)',
                       'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
                       'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)'},
              'desc': ('Set the magnetic field and optional overrides. The validated core-mesh bounds '
@@ -215,11 +224,17 @@ class WorkflowSetup(QWidget):
 
         args = dict(args or {})
         if action == 'prepare_inversion_folder':
-            inspection = inspect_survey_folder(args.get('path') or '')
+            role_overrides = {
+                role: args[role] for role in FILE_ROLES if args.get(role)
+            }
+            inspection = inspect_survey_folder(args.get('path') or '', role_overrides)
             self.task.setCurrentIndex(self.task.findData('invert'))
             self._survey_inspection = inspection
             self._configuration = None
-            self.inputs = {'input_dir': inspection['folder']}
+            self.inputs = {
+                'input_dir': inspection['folder'],
+                **{role: inspection['files'][role] for role in FILE_ROLES},
+            }
             self.preview.setPlainText('Survey files identified. Confirm the physical parameters in the conversation.')
             return {'status': 'needs_input', 'inputs': dict(self.inputs), **inspection}
         if action == 'get_inversion_setup':
@@ -233,7 +248,10 @@ class WorkflowSetup(QWidget):
             if not inspection:
                 return {'status': 'failed', 'error': 'Scan the survey folder first.'}
             self._configuration = build_configuration(inspection, args)
-            self.inputs = {'input_dir': inspection['folder']}
+            self.inputs = {
+                'input_dir': inspection['folder'],
+                **{role: inspection['files'][role] for role in FILE_ROLES},
+            }
             self.preview.setPlainText('Confirmed run settings are ready. The source files remain read-only.')
             return {'status': 'ready_for_confirmation', 'inputs': dict(self.inputs),
                     'configuration': deepcopy(self._configuration),
@@ -314,6 +332,7 @@ class WorkflowSetup(QWidget):
                 r, inv = cfg["region"], cfg["inversion"]
                 rows += [("Region (m)", f'E {r["min_e"]}–{r["max_e"]}; N {r["min_n"]}–{r["max_n"]}'),
                          ("Gravity", f'{cfg["data"]["gravity_column"]} / {cfg["data"]["gravity_component"]}'),
+                         ("Magnetic observations", cfg["data"].get("magnetic_column", "TFMA")),
                          ("Magnetic field", f'{inv["field_strength"]} nT; inclination {inv["inclination"]}°; declination {inv["declination"]}°'),
                          ("Maximum iterations", inv['optimization']['maxGNCG'])]
                 rows += [(role.replace('_', ' ').title(), cfg['studio_inputs'].get(role) or
@@ -355,7 +374,8 @@ class WorkflowSetup(QWidget):
             ('Project name', 'project', 'name', str),
             ('Minimum easting (m)', 'region', 'min_e', float), ('Maximum easting (m)', 'region', 'max_e', float),
             ('Minimum northing (m)', 'region', 'min_n', float), ('Maximum northing (m)', 'region', 'max_n', float),
-            ('Gravity column', 'data', 'gravity_column', str), ('Gravity component (e.g. gz)', 'data', 'gravity_component', str),
+            ('Gravity column', 'data', 'gravity_column', str), ('Magnetic column', 'data', 'magnetic_column', str),
+            ('Gravity component (e.g. gz)', 'data', 'gravity_component', str),
             ('Field strength (nT)', 'inversion', 'field_strength', float),
             ('Inclination (degrees)', 'inversion', 'inclination', float), ('Declination (degrees)', 'inversion', 'declination', float),
         ]
