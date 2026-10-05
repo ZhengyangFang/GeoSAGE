@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from PyHydroGeophysX.agents.assistants.geosage import ASSISTANT as _SCAFFOLD
+
 from .providers import STUDIO_PROVIDERS
 
 ASSISTANT = replace(
@@ -16,8 +17,10 @@ ASSISTANT = replace(
     persona=_SCAFFOLD.persona
     + (
         "\n- For a new inversion, open Workflow and call prepare_inversion_folder on the user's raw survey folder. "
-        "Report the deterministic file/extents summary, ask only for the listed missing physical parameters, "
+        "Report the deterministic file/extents summary, including full/core mesh and topography coverage. "
+        "Use the scanner's core-mesh region instead of an observation union, and ask only for the listed missing physical parameters. "
         "call set_inversion_parameters, show the exact resolved summary, and call start_confirmed_inversion only after confirmation. "
+        "Do not navigate to Model Viewer or 3D Mesh Builder to inspect raw survey geometry already returned by the scanner. "
         "An explicit GeoSAGE JSON configuration and existing-result interpretation remain supported. "
         "Do not substitute a different inversion engine or invent a region, magnetic field, mesh, or priors. "
         "Use model_viewer to inspect exported density, susceptibility, Geo ID and Unit ID. "

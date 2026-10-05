@@ -2,7 +2,10 @@
 import json
 import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 pytest.importorskip('PyHydroGeophysX.agents.assistants')
 pytest.importorskip('PySide6')
 from PySide6.QtWidgets import QApplication
@@ -191,8 +194,16 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
         'Easting,Northing,ISO\n100,200,1\n300,500,2\n', encoding='utf-8')
     (folder / 'Demo_magnetic_data.csv').write_text(
         'Easting,Northing,TFMA\n150,250,1\n350,450,2\n', encoding='utf-8')
-    for name in ('Demo_topo.tif', 'Demo_mesh.msh', 'Demo_mesh_core.msh'):
-        (folder / name).write_text('test', encoding='utf-8')
+    (folder / 'Demo_mesh.msh').write_text(
+        '6 6 2\n50 150 100\n6*50\n6*50\n2*25\n', encoding='utf-8')
+    (folder / 'Demo_mesh_core.msh').write_text(
+        '4 4 2\n100 200 100\n4*50\n4*50\n2*25\n', encoding='utf-8')
+    with rasterio.open(
+        folder / 'Demo_topo.tif', 'w', driver='GTiff', height=10, width=10,
+        count=1, dtype='float32', crs='EPSG:32610',
+        transform=from_origin(0, 600, 60, 60),
+    ) as dataset:
+        dataset.write(np.ones((10, 10), dtype='float32'), 1)
 
     names = {row['name'] for row in page.agent_describe()['actions']}
     assert {'prepare_inversion_folder', 'set_inversion_parameters',
@@ -201,7 +212,7 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
     assert scanned['status'] == 'needs_input'
     assert page._inputs == {'input_dir': str(folder.resolve())}
     ready = page.agent_apply('set_inversion_parameters', {
-        'min_e': 120, 'max_e': 280, 'min_n': 220, 'max_n': 480,
+        'min_e': 120, 'max_e': 280, 'min_n': 220, 'max_n': 380,
         'field_strength': 50000, 'inclination': 60, 'declination': 5,
     })
     assert ready['status'] == 'ready_for_confirmation'

@@ -1,15 +1,28 @@
 """Task-first desktop setup; the same configuration resolver drives the run."""
 
-from html import escape
-from pathlib import Path
 import json
 from copy import deepcopy
+from html import escape
+from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QComboBox, QLabel, QLineEdit, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
-                              QDialog, QDialogButtonBox, QFormLayout, QPlainTextEdit, QHBoxLayout, QTabBar)
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QTabBar,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .configuration import configure, FILE_ROLES
+from .configuration import FILE_ROLES, configure
 
 
 class WorkflowSetup(QWidget):
@@ -173,16 +186,22 @@ class WorkflowSetup(QWidget):
         """Actions exposed to the host's conversational assistant."""
         return [
             {'name': 'prepare_inversion_folder', 'args': {'path': 'str'},
-             'desc': ('Scan a raw GeoSAGE survey folder locally, identify its files and data extents, '
-                      'and list the physical parameters that still need the user. Does not run anything.')},
+             'desc': ('Scan a raw GeoSAGE survey folder locally; validate CSV observations, parse the '
+                      'full and core UBC meshes, read GeoTIFF bounds/CRS, check spatial coverage, and '
+                      'derive the inversion region from the core mesh. Lists only physical parameters '
+                      'that still need the user and does not run anything.')},
             {'name': 'set_inversion_parameters',
-             'args': {'min_e': 'number', 'max_e': 'number', 'min_n': 'number', 'max_n': 'number',
+             'args': {'min_e': 'number (optional; core-mesh minimum)',
+                      'max_e': 'number (optional; core-mesh maximum)',
+                      'min_n': 'number (optional; core-mesh minimum)',
+                      'max_n': 'number (optional; core-mesh maximum)',
                       'field_strength': 'number (nT)', 'inclination': 'number (degrees)',
                       'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
                       'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
                       'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)'},
-             'desc': ('Set the user-confirmed region and magnetic field. Method defaults are retained '
-                      'unless the user overrides them. Returns the exact resolved run summary.')},
+             'desc': ('Set the magnetic field and optional overrides. The validated core-mesh bounds '
+                      'supply the region when it is omitted; method defaults are retained unless the '
+                      'user overrides them. Returns the exact resolved run summary and input files.')},
             {'name': 'get_inversion_setup', 'args': {},
              'desc': 'Read the detected files, evidence extents, missing parameters and resolved settings.'},
             {'name': 'start_confirmed_inversion', 'args': {'objective': 'str (optional)'},

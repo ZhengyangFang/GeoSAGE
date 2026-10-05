@@ -8,18 +8,18 @@ not introduce a second desktop application or replace the inversion kernel.
 ## Current compatibility
 
 The adapter targets the assistant entry-point API in PyHydroGeophysX 0.5.0,
-paired with upstream commit `098a61784a703db269df50f40e23b069afe8863b`
+paired with upstream commit `4510ceece691c446e5a86b60193341f899643184`
 and the accompanying host integration branch.
 Use the source checkouts while this integration is under review: a release
 carrying the same version number may predate that API.
 
 The desktop enhancements are available in the
-[companion host branch](https://github.com/ZhengyangFang/PyHydroGeophysX/tree/feature/geosage-integration).
+[companion host branch](https://github.com/ZhengyangFang/PyHydroGeophysX/tree/feature/geosage-conversation).
 Until they are merged upstream, pair GeoSAGE `main` with that branch:
 
 ```bash
 git clone https://github.com/ZhengyangFang/GeoSAGE.git
-git clone --branch feature/geosage-integration https://github.com/ZhengyangFang/PyHydroGeophysX.git
+git clone --branch feature/geosage-conversation https://github.com/ZhengyangFang/PyHydroGeophysX.git
 ```
 
 The accompanying host changes add an explicit offline-workflow capability,
@@ -103,8 +103,11 @@ For the guided route, open **Assistant**, keep **Step-by-step assistance**, and 
 > ask me for parameters that cannot be derived, then run it and review the report.
 
 GeoSAGE identifies the survey files and reads coordinate extents locally. It
-does not ask the model to guess file roles. Region bounds and the magnetic field
-strength, inclination and declination remain unset until the user supplies them.
+does not ask the model to guess file roles. The deterministic scanner parses the
+full and core UBC meshes, reads GeoTIFF bounds and CRS, checks mesh/topography
+coverage and counts observations inside the core. Validated core-mesh horizontal
+bounds supply the proposed inversion region. Magnetic field strength, inclination
+and declination remain unset until the user supplies them.
 The assistant shows the resolved configuration and asks for confirmation before
 starting. After confirmation, the same conversation switches to the full
 inversion, report and independent-review workflow. Generated runs go to the
