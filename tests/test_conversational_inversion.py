@@ -13,7 +13,9 @@ from geosage.studio_survey import build_configuration, inspect_survey_folder
 def _survey(folder: Path):
     folder.mkdir()
     (folder / "Demo_gravity_data.csv").write_text(
-        "Easting,Northing,ISO,CBA\n100,200,1,2\n300,500,3,4\n", encoding="utf-8"
+        "Easting,Northing,Longitude,Latitude,Height,ISO,CBA\n"
+        "125,225,-123.0,42.0,100,1,2\n300,500,-122.9,42.1,110,3,4\n",
+        encoding="utf-8",
     )
     (folder / "Demo_magnetic_data.csv").write_text(
         "Easting,Northing,TFMA\n150,250,10\n350,450,20\n", encoding="utf-8"
@@ -41,7 +43,7 @@ def test_folder_scan_is_deterministic_and_leaves_scientific_parameters_missing(t
     found = inspect_survey_folder(folder)
     assert found["project"] == "Demo"
     assert found["gravity"]["extent"] == {
-        "min_e": 100.0, "max_e": 300.0, "min_n": 200.0, "max_n": 500.0
+        "min_e": 125.0, "max_e": 300.0, "min_n": 225.0, "max_n": 500.0
     }
     assert found["detected"]["gravity_column"] == "ISO"
     assert found["detected"]["region"] == {
@@ -63,11 +65,13 @@ def test_configuration_requires_user_supplied_field_and_accepts_region_override(
     with pytest.raises(ValueError, match="Still needed from the user"):
         build_configuration(found, {})
     config = build_configuration(found, {
-        "min_e": 120, "max_e": 280, "min_n": 220, "max_n": 380,
+        "min_e": 110, "max_e": 200, "min_n": 210, "max_n": 300,
         "field_strength": 50000, "inclination": 60, "declination": 5,
     })
-    assert config["region"] == {"min_e": 120.0, "max_e": 280.0,
-                                 "min_n": 220.0, "max_n": 380.0}
+    assert config["region"] == {"min_e": 110.0, "max_e": 200.0,
+                                 "min_n": 210.0, "max_n": 300.0}
+    assert config["project"]["region_source"] == "user_override"
+    assert config["project"]["region_observations"] == {"gravity": 1, "magnetic": 1}
     assert config["inversion"]["field_strength"] == 50000.0
     assert config["data"]["gravity_column"] == "ISO"
     assert config["geology"]["mode"] == "csv_manual"
@@ -89,13 +93,50 @@ def test_configuration_uses_validated_core_mesh_region_when_omitted(tmp_path):
     assert config["inversion"]["optimization"]["maxGNCG"] == 10
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"std_grv": 0}, "standard deviations"),
+        ({"std_mag": -1}, "standard deviations"),
+        ({"flight_height_ft": -1}, "Flight height"),
+        ({"max_iterations": 0}, "positive whole number"),
+        ({"max_iterations": 10.5}, "positive whole number"),
+    ],
+)
+def test_configuration_rejects_invalid_method_settings(tmp_path, overrides, message):
+    found = inspect_survey_folder(_survey(tmp_path / "raw"))
+    with pytest.raises(ValueError, match=message):
+        build_configuration(found, {
+            "field_strength": 50000, "inclination": 60, "declination": 5,
+            **overrides,
+        })
+
+
+def test_configuration_rejects_a_region_without_both_data_types(tmp_path):
+    found = inspect_survey_folder(_survey(tmp_path / "raw"))
+    with pytest.raises(ValueError, match="at least one usable gravity and magnetic"):
+        build_configuration(found, {
+            "min_e": 200, "max_e": 280, "min_n": 300, "max_n": 380,
+            "field_strength": 50000, "inclination": 60, "declination": 5,
+        })
+
+
+def test_scan_rejects_missing_runner_columns_before_inversion(tmp_path):
+    folder = _survey(tmp_path / "raw")
+    (folder / "Demo_gravity_data.csv").write_text(
+        "Easting,Northing,ISO\n125,225,1\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="Longitude, Latitude, Height"):
+        inspect_survey_folder(folder)
+
+
 def test_ai_backed_new_inversion_enables_report_but_local_run_does_not(tmp_path):
     pytest.importorskip("PyHydroGeophysX")
     from geosage.pyhydrogeophysx.configuration import configure
 
     found = inspect_survey_folder(_survey(tmp_path / "raw"))
     config = build_configuration(found, {
-        "min_e": 120, "max_e": 280, "min_n": 220, "max_n": 380,
+        "min_e": 110, "max_e": 200, "min_n": 210, "max_n": 300,
         "field_strength": 50000, "inclination": 60, "declination": 5,
     })
     base = {"inputs": {"input_dir": found["folder"]}, "config": config,
@@ -106,3 +147,27 @@ def test_ai_backed_new_inversion_enables_report_but_local_run_does_not(tmp_path)
     ai = configure(dict(base, output_dir=str(tmp_path / "runs" / "two"),
                         provider="codex_cli", use_ai=True))
     assert ai["run"]["write_reports"] and ai["run"]["review_enabled"]
+
+
+def test_preflight_accepts_hannah_style_magnetic_coordinates(tmp_path):
+    pytest.importorskip("PyHydroGeophysX")
+    from types import SimpleNamespace
+
+    from geosage.pyhydrogeophysx.configuration import configure
+    from geosage.pyhydrogeophysx.tools import prepare_data
+
+    found = inspect_survey_folder(_survey(tmp_path / "raw"))
+    config = build_configuration(found, {
+        "field_strength": 50000, "inclination": 60, "declination": 5,
+        "max_iterations": 10,
+    })
+    output = tmp_path / "run"
+    output.mkdir()
+    cfg = configure({
+        "inputs": {"input_dir": found["folder"]}, "config": config,
+        "studio_task": "invert", "request": "Run locally", "use_ai": False,
+        "output_dir": str(output),
+    })
+    summary, artifacts = prepare_data(SimpleNamespace(config=cfg, output_dir=output))
+    assert "gravity and 1 magnetic" in summary
+    assert artifacts["field_data"]["station_counts"] == [1, 1]

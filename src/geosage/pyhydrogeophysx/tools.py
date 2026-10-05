@@ -66,9 +66,11 @@ def prepare_data(ctx):
         ("magnetic_file", "TFMA"),
     ):
         table = pd.read_csv(files[role])
-        required = ["Easting", "Northing", "Longitude", "Latitude", column]
+        required = ["Easting", "Northing", column]
         if role == "gravity_file":
-            required.append("Height")
+            # The current numerical kernel uses the gravity longitude/latitude
+            # pair to establish the projected CRS for geographic topography.
+            required.extend(["Longitude", "Latitude", "Height"])
         absent = set(required) - set(table.columns)
         if absent:
             raise ValueError(

@@ -142,14 +142,15 @@ class WorkflowSetup(QWidget):
         self._show_agent_plan()
         self.changed.emit()
 
-    def _show_agent_plan(self, config=None):
+    def _show_agent_plan(self, config=None, use_ai=None):
         from .lifecycle import plan_for
 
         config = config or {'run': {'execution_mode': 'full' if self.task.currentData() == 'invert' else 'interpret_existing'}}
-        rows = plan_for(config, self.needs_ai)
+        use_ai = self.needs_ai if use_ai is None else bool(use_ai)
+        rows = plan_for(config, use_ai)
         outputs = {'field_data': 'Validated inputs', 'geological_priors': 'Geological priors',
                    'property_models': 'Density and susceptibility', 'geo_model': 'Labels, views and evidence',
-                   'draft_report': 'Interpretation draft' if self.needs_ai else 'Numerical summary',
+                   'draft_report': 'Interpretation draft' if use_ai else 'Numerical summary',
                    'report_files': 'Report and review status'}
         self.agent_plan.setHtml('<b>Each stage hands its outputs to the next.</b><ol>' + ''.join(
             f'<li><b>{escape(row["label"])}</b> · {escape(row["agent"])} · '
@@ -244,7 +245,11 @@ class WorkflowSetup(QWidget):
             objective = str(args.get('objective') or '').strip()
             if objective:
                 self.goal.setText(objective)
-            return {'status': 'ok', 'start_workflow': True, 'request': objective or self.request(),
+            request = objective or (
+                'Run the confirmed joint inversion, generate an interpretation report, '
+                'and independently review it.'
+            )
+            return {'status': 'ok', 'start_workflow': True, 'request': request,
                     'detail': 'Starting the confirmed inversion and reviewed report.'}
         return {'status': 'failed', 'error': f"Unknown GeoSAGE setup action '{action}'."}
 
@@ -298,12 +303,13 @@ class WorkflowSetup(QWidget):
         try:
             payload = self.prepare_payload(payload)
             cfg = configure(payload)
-            self._show_agent_plan(cfg)
+            uses_ai = bool(cfg["run"].get("write_reports") and cfg["run"].get("review_enabled"))
+            self._show_agent_plan(cfg, uses_ai)
             project = cfg["project"]
             rows = [("Project", project["name"]), ("Execution", cfg["run"]["execution_mode"]),
                     ("Geology", cfg["geology"]["mode"]),
                     ("Source", project.get("source_inversion_dir") or project["input_dir"]),
-                    ("AI", "Interpretation + independent review" if self.needs_ai else "Not used")]
+                    ("AI", "Interpretation + independent review" if uses_ai else "Not used")]
             if cfg["run"]["execution_mode"] == "full":
                 r, inv = cfg["region"], cfg["inversion"]
                 rows += [("Region (m)", f'E {r["min_e"]}–{r["max_e"]}; N {r["min_n"]}–{r["max_n"]}'),

@@ -194,6 +194,12 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
         'Easting,Northing,ISO\n100,200,1\n300,500,2\n', encoding='utf-8')
     (folder / 'Demo_magnetic_data.csv').write_text(
         'Easting,Northing,TFMA\n150,250,1\n350,450,2\n', encoding='utf-8')
+    (folder / 'Demo_gravity_data.csv').write_text(
+        'Easting,Northing,Longitude,Latitude,Height,ISO\n'
+        '125,225,-123,42,100,1\n300,500,-122.9,42.1,110,2\n', encoding='utf-8')
+    (folder / 'Demo_magnetic_data.csv').write_text(
+        'Easting,Northing,Longitude,Latitude,TFMA\n'
+        '150,250,-123,42,1\n350,450,-122.9,42.1,2\n', encoding='utf-8')
     (folder / 'Demo_mesh.msh').write_text(
         '6 6 2\n50 150 100\n6*50\n6*50\n2*25\n', encoding='utf-8')
     (folder / 'Demo_mesh_core.msh').write_text(
@@ -212,7 +218,7 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
     assert scanned['status'] == 'needs_input'
     assert page._inputs == {'input_dir': str(folder.resolve())}
     ready = page.agent_apply('set_inversion_parameters', {
-        'min_e': 120, 'max_e': 280, 'min_n': 220, 'max_n': 380,
+        'min_e': 100, 'max_e': 200, 'min_n': 200, 'max_n': 300,
         'field_strength': 50000, 'inclination': 60, 'declination': 5,
     })
     assert ready['status'] == 'ready_for_confirmation'
@@ -221,3 +227,51 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
     result = page.agent_apply('start_confirmed_inversion', {'objective': 'Map the target'})
     assert result['launch_requested'] is True
     assert launched == ['Map the target']
+
+
+def test_chat_inversion_preview_truthfully_shows_ai_report_and_review(page, tmp_path):
+    setup = page._workflow_setup
+    folder = tmp_path / 'raw'
+    folder.mkdir()
+    (folder / 'Demo_gravity_data.csv').write_text(
+        'Easting,Northing,ISO\n100,200,1\n300,500,2\n', encoding='utf-8')
+    (folder / 'Demo_magnetic_data.csv').write_text(
+        'Easting,Northing,TFMA\n150,250,1\n350,450,2\n', encoding='utf-8')
+    (folder / 'Demo_gravity_data.csv').write_text(
+        'Easting,Northing,Longitude,Latitude,Height,ISO\n'
+        '125,225,-123,42,100,1\n300,500,-122.9,42.1,110,2\n', encoding='utf-8')
+    (folder / 'Demo_magnetic_data.csv').write_text(
+        'Easting,Northing,Longitude,Latitude,TFMA\n'
+        '150,250,-123,42,1\n350,450,-122.9,42.1,2\n', encoding='utf-8')
+    (folder / 'Demo_mesh.msh').write_text(
+        '6 6 2\n50 150 100\n6*50\n6*50\n2*25\n', encoding='utf-8')
+    (folder / 'Demo_mesh_core.msh').write_text(
+        '4 4 2\n100 200 100\n4*50\n4*50\n2*25\n', encoding='utf-8')
+    with rasterio.open(
+        folder / 'Demo_topo.tif', 'w', driver='GTiff', height=10, width=10,
+        count=1, dtype='float32', crs='EPSG:32610',
+        transform=from_origin(0, 600, 60, 60),
+    ) as dataset:
+        dataset.write(np.ones((10, 10), dtype='float32'), 1)
+    page.agent_apply('prepare_inversion_folder', {'path': str(folder)})
+    page.agent_apply('set_inversion_parameters', {
+        'field_strength': 50000, 'inclination': 60, 'declination': 5,
+        'max_iterations': 10,
+    })
+    setup.show_configuration({
+        'inputs': dict(setup.inputs), 'request': 'Run and explain the model',
+        'output_dir': str(tmp_path / 'runs' / 'preview'), 'studio_task': 'invert',
+        'provider': 'openai', 'api_key': 'test-only', 'use_ai': True,
+    })
+    assert 'Interpretation + independent review' in setup.preview.toPlainText()
+    plan = setup.agent_plan.toPlainText()
+    assert 'Draft report' in plan and 'AI' in plan
+
+
+def test_confirmed_inversion_default_request_includes_report_and_review(page, tmp_path):
+    setup = page._workflow_setup
+    setup._configuration = {'ready': True}
+    result = setup.agent_apply('start_confirmed_inversion', {})
+    assert result['start_workflow'] is True
+    assert 'interpretation report' in result['request']
+    assert 'independently review' in result['request']

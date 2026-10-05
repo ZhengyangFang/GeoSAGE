@@ -91,6 +91,27 @@ def _csv_extent(path: Path) -> dict:
     return result
 
 
+def _validate_numeric_columns(path: Path, required: tuple[str, ...]) -> None:
+    """Mirror the numerical runner's required CSV columns during setup."""
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = list(reader.fieldnames or [])
+        missing = [name for name in required if name not in fields]
+        if missing:
+            raise ValueError(f"{path.name} is missing required columns: {', '.join(missing)}.")
+        for line, row in enumerate(reader, start=2):
+            try:
+                values = [float(row[name]) for name in required]
+            except (TypeError, ValueError, KeyError) as exc:
+                raise ValueError(
+                    f"{path.name} has a non-numeric required value on row {line}."
+                ) from exc
+            if not all(math.isfinite(value) for value in values):
+                raise ValueError(
+                    f"{path.name} has a non-finite required value on row {line}."
+                )
+
+
 def _meaningful_lines(path: Path) -> list[str]:
     lines = []
     for raw in path.read_text(encoding="utf-8-sig").splitlines():
@@ -186,6 +207,7 @@ def _topography_summary(path: Path, geographic_extent: dict | None) -> dict:
                 "path": str(path),
                 "shape": {"rows": dataset.height, "columns": dataset.width},
                 "crs": dataset.crs.to_string() if dataset.crs else None,
+                "is_geographic": bool(dataset.crs and dataset.crs.is_geographic),
                 "native_bounds": {
                     "left": float(bounds.left), "bottom": float(bounds.bottom),
                     "right": float(bounds.right), "top": float(bounds.top),
@@ -237,8 +259,9 @@ def _rows_in_region(path: Path, region: dict) -> int:
                 e, n = float(row[east]), float(row[north])
             except (TypeError, ValueError, KeyError):
                 continue
-            if (region["min_e"] <= e <= region["max_e"]
-                    and region["min_n"] <= n <= region["max_n"]):
+            # Match the numerical kernel's strict study-area mask exactly.
+            if (region["min_e"] < e < region["max_e"]
+                    and region["min_n"] < n < region["max_n"]):
                 count += 1
         return count
 
@@ -256,12 +279,27 @@ def inspect_survey_folder(path: str | Path) -> dict:
         raise ValueError("Missing required survey files: " + ", ".join(missing))
     gravity = _csv_extent(Path(files["gravity_file"]))
     magnetic = _csv_extent(Path(files["magnetic_file"]))
+    _validate_numeric_columns(
+        Path(files["gravity_file"]),
+        ("Easting", "Northing", "Longitude", "Latitude", "Height"),
+    )
+    _validate_numeric_columns(
+        Path(files["magnetic_file"]),
+        ("Easting", "Northing", "TFMA"),
+    )
     mesh = _ubc_mesh_summary(Path(files["mesh_file"]))
     core_mesh = _ubc_mesh_summary(Path(files["core_mesh_file"]))
     topography = _topography_summary(
         Path(files["topography_file"]),
         gravity.get("geographic_extent") or magnetic.get("geographic_extent"),
     )
+    if not topography.get("crs"):
+        raise ValueError("The topography GeoTIFF has no coordinate reference system (CRS).")
+    if topography.get("is_geographic") and not topography.get("projected_bounds"):
+        raise ValueError(
+            "The topography uses geographic coordinates, so the gravity or magnetic CSV needs "
+            "finite Longitude and Latitude columns to determine the projected survey CRS."
+        )
     region = {
         key: core_mesh["bounds"][key]
         for key in ("min_e", "max_e", "min_n", "max_n")
@@ -310,8 +348,10 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
     """Build a full-run configuration from explicit user parameters."""
     required = ("min_e", "max_e", "min_n", "max_n", "field_strength", "inclination", "declination")
     resolved = dict(parameters)
+    region_keys = ("min_e", "max_e", "min_n", "max_n")
+    region_overridden = any(parameters.get(key) not in (None, "") for key in region_keys)
     detected_region = inspection.get("detected", {}).get("region") or {}
-    for key in ("min_e", "max_e", "min_n", "max_n"):
+    for key in region_keys:
         if resolved.get(key) in (None, "") and detected_region.get(key) not in (None, ""):
             resolved[key] = detected_region[key]
     missing = [key for key in required if resolved.get(key) in (None, "")]
@@ -336,19 +376,39 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
     optional = {key: parameters.get(key, default) for key, default in defaults.items()}
     try:
         optional = {key: float(value) for key, value in optional.items()}
-        optional["max_iterations"] = int(optional["max_iterations"])
     except (TypeError, ValueError) as exc:
         raise ValueError("Method settings must be numeric.") from exc
+    if not all(math.isfinite(value) for value in optional.values()):
+        raise ValueError("Method settings must be finite.")
+    if optional["std_grv"] <= 0 or optional["std_mag"] <= 0:
+        raise ValueError("Gravity and magnetic standard deviations must be positive.")
+    if optional["flight_height_ft"] < 0:
+        raise ValueError("Flight height cannot be negative.")
+    if optional["max_iterations"] < 1 or not optional["max_iterations"].is_integer():
+        raise ValueError("Maximum iterations must be a positive whole number.")
+    optional["max_iterations"] = int(optional["max_iterations"])
     gravity_column = str(parameters.get("gravity_column") or inspection["detected"].get("gravity_column") or "").strip()
     if not gravity_column:
         raise ValueError("Choose the gravity data column.")
     if gravity_column not in inspection["gravity"]["columns"]:
         raise ValueError(f"Gravity column '{gravity_column}' is not in the gravity CSV.")
     files = inspection["files"]
+    _validate_numeric_columns(
+        Path(files["gravity_file"]),
+        ("Easting", "Northing", "Longitude", "Latitude", "Height", gravity_column),
+    )
     mesh_bounds = inspection.get("mesh", {}).get("bounds")
     configured_region = {key: values[key] for key in ("min_e", "max_e", "min_n", "max_n")}
     if mesh_bounds and not _contains(mesh_bounds, configured_region):
         raise ValueError("The configured region extends outside the full inversion mesh.")
+    region_observations = {
+        "gravity": _rows_in_region(Path(files["gravity_file"]), configured_region),
+        "magnetic": _rows_in_region(Path(files["magnetic_file"]), configured_region),
+    }
+    if not all(region_observations.values()):
+        raise ValueError(
+            "The configured region must contain at least one usable gravity and magnetic observation."
+        )
     geology = {"mode": "gmm_only"}
     if files.get("unit_defs_file") and files.get("unit_groups_file"):
         geology.update(mode="csv_manual", unit_defs_csv=files["unit_defs_file"],
@@ -359,7 +419,11 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
         "project": {
             "name": inspection["project"], "input_dir": inspection["folder"],
             "input_files": dict(files),
-            "region_source": inspection.get("detected", {}).get("region_source", "user"),
+            "region_source": (
+                "user_override" if region_overridden
+                else inspection.get("detected", {}).get("region_source", "core_mesh_file")
+            ),
+            "region_observations": region_observations,
         },
         "region": {key: values[key] for key in ("min_e", "max_e", "min_n", "max_n")},
         "data": {
