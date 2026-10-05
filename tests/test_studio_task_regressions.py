@@ -182,3 +182,31 @@ def test_task_segments_select_the_correct_input_and_action(page):
     setup.task_tabs.setCurrentIndex(2)
     assert setup.needs_ai and page.role.currentData() == 'source_inversion_dir'
     assert page.run.text() == 'Generate interpretation'
+
+
+def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_path):
+    folder = tmp_path / 'raw'
+    folder.mkdir()
+    (folder / 'Demo_gravity_data.csv').write_text(
+        'Easting,Northing,ISO\n100,200,1\n300,500,2\n', encoding='utf-8')
+    (folder / 'Demo_magnetic_data.csv').write_text(
+        'Easting,Northing,TFMA\n150,250,1\n350,450,2\n', encoding='utf-8')
+    for name in ('Demo_topo.tif', 'Demo_mesh.msh', 'Demo_mesh_core.msh'):
+        (folder / name).write_text('test', encoding='utf-8')
+
+    names = {row['name'] for row in page.agent_describe()['actions']}
+    assert {'prepare_inversion_folder', 'set_inversion_parameters',
+            'start_confirmed_inversion'} <= names
+    scanned = page.agent_apply('prepare_inversion_folder', {'path': str(folder)})
+    assert scanned['status'] == 'needs_input'
+    assert page._inputs == {'input_dir': str(folder.resolve())}
+    ready = page.agent_apply('set_inversion_parameters', {
+        'min_e': 120, 'max_e': 280, 'min_n': 220, 'max_n': 480,
+        'field_strength': 50000, 'inclination': 60, 'declination': 5,
+    })
+    assert ready['status'] == 'ready_for_confirmation'
+    launched = []
+    page.startAIRequested.connect(launched.append)
+    result = page.agent_apply('start_confirmed_inversion', {'objective': 'Map the target'})
+    assert result['launch_requested'] is True
+    assert launched == ['Map the target']

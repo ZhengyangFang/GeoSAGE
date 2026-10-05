@@ -136,9 +136,9 @@ def configure(payload):
     from .providers import ai_enabled
     if task == "interpret" and not ai_enabled(payload):
         raise ValueError("AI interpretation requires a session provider key or a configured CLI provider.")
-    if task in {"inspect", "invert"}:
+    if task == "inspect" or (task == "invert" and not ai_enabled(payload)):
         cfg["run"].update(write_reports=False, review_enabled=False)
-    elif task == "interpret":
+    elif task in {"invert", "interpret"}:
         cfg["run"].update(write_reports=True, review_enabled=True)
     if mode not in {"full", "interpret_existing"}:
         raise ValueError(f"Unsupported execution mode: {mode}")

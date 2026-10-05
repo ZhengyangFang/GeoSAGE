@@ -15,8 +15,10 @@ ASSISTANT = replace(
     requires_packages=("geosage", "simpeg"),
     persona=_SCAFFOLD.persona
     + (
-        "\n- GeoSAGE computations run through the Workflow page using an explicit GeoSAGE JSON configuration "
-        "or an existing inversion folder. Generic processing-module parameters do not edit that configuration. "
+        "\n- For a new inversion, open Workflow and call prepare_inversion_folder on the user's raw survey folder. "
+        "Report the deterministic file/extents summary, ask only for the listed missing physical parameters, "
+        "call set_inversion_parameters, show the exact resolved summary, and call start_confirmed_inversion only after confirmation. "
+        "An explicit GeoSAGE JSON configuration and existing-result interpretation remain supported. "
         "Do not substitute a different inversion engine or invent a region, magnetic field, mesh, or priors. "
         "Use model_viewer to inspect exported density, susceptibility, Geo ID and Unit ID. "
         "Run without AI produces numerical evidence only, never an AI-reviewed interpretation. "
@@ -36,6 +38,7 @@ ASSISTANT = replace(
         ("Geological reference (PDF / text)", "reference_file"),
     ),
     examples=(
+        "Use my raw survey folder to prepare a new inversion; ask me for parameters you cannot infer",
         "Interpret my existing GeoSAGE inversion without changing the models",
         "Run the supplied GeoSAGE configuration and review the geological interpretation",
         "Compare density, susceptibility and geological groups in the model viewer",

@@ -68,17 +68,16 @@ data validation, priors, model loading/inversion, geology, report writing and re
 Local viewing does not call an AI provider. Interpretation of existing models does
 not rerun the inversion.
 
-1. Open or create a **Project** outside the source data and inversion folders.
-2. Select **GeoSAGE** in the assistant picker. In **Data & reports → Data**, add
+1. Select **GeoSAGE** in the assistant picker. In **Data & reports → Data**, add
    the folder with role **Existing GeoSAGE inversion folder**.
-3. Choose **Inspect existing results · local**, use **Check inputs & preview configuration**,
+2. Choose **Inspect existing results · local**, use **Check inputs & preview configuration**,
    then select **Open results**. Enable **Approve each step before it runs** if
    you want to examine each stage. Stop preserves partial outputs in this run.
-4. Inspect **Results & report**, or **Saved Results → Visualization**. The VTK
+3. Inspect **Results & report**, or **Saved Results → Visualization**. The VTK
    property selector offers density contrast, susceptibility, Geo ID and Unit ID;
    the clipping plane exposes interior cells. Figures remain available without
    a compatible OpenGL renderer.
-5. Use **Save this run to Project** to retain the run in Studio's history across sessions.
+4. Use **Save this run** to retain the run in Studio's local history across sessions.
    An unsaved run's files exist locally but are not part of saved history.
 
 At minimum, an archive needs:
@@ -98,9 +97,22 @@ choose another geological mode or explicit targets.
 
 ## Run a new inversion
 
-Choose **Run a new inversion · local**. Add a **GeoSAGE configuration (JSON)** with an explicit project name, region,
-survey and inversion settings. Existing configs retain their workspace-relative
-path rules. The adapter does not infer physical settings from a chat request.
+For the guided route, open **Assistant**, keep **Step-by-step assistance**, and say:
+
+> Use `D:\path\to\survey` to prepare a new GeoSAGE inversion. Inspect the files,
+> ask me for parameters that cannot be derived, then run it and review the report.
+
+GeoSAGE identifies the survey files and reads coordinate extents locally. It
+does not ask the model to guess file roles. Region bounds and the magnetic field
+strength, inclination and declination remain unset until the user supplies them.
+The assistant shows the resolved configuration and asks for confirmation before
+starting. After confirmation, the same conversation switches to the full
+inversion, report and independent-review workflow. Generated runs go to the
+workspace's `outputs/studio_runs/`; no separate Project selection is required.
+
+The manual route remains available under **Run a new inversion · local**. Add a
+**GeoSAGE configuration (JSON)** with an explicit project name, region, survey
+and inversion settings. Existing configs retain their workspace-relative path rules.
 Use **Create / edit inversion configuration** to edit physical settings for this run;
 imported advanced settings are retained and the original JSON is not modified.
 **View all resolved parameters** shows the complete effective configuration.
@@ -153,8 +165,10 @@ Provider keys are session settings, never configuration fields. The offline
 button ignores provider settings, saved CLI logins and environment keys. Local reference documents
 use GeoSAGE's existing context handling; Studio's additional RAG/MCP retrieval
 is not implemented for this workflow, so those controls are hidden for GeoSAGE.
-The selected task determines whether report generation and review are enabled,
-even when an imported configuration was originally used for a local run.
+An AI-backed new inversion generates and independently reviews its report in the
+same run. The local task button remains numerical-only. The selected task and
+provider determine whether report generation and review are enabled, even when
+an imported configuration was originally used for a local run.
 Do not put credentials in JSON configs.
 
 An offline summary is always `needs_review` / `NOT_REVIEWED`. A revised report

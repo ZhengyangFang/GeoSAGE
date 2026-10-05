@@ -22,6 +22,7 @@ class WorkflowSetup(QWidget):
         super().__init__(parent)
         self.inputs = {}
         self._configuration = None
+        self._survey_inspection = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.task = QComboBox()
@@ -168,9 +169,71 @@ class WorkflowSetup(QWidget):
         common = {"config_file", "unit_defs_file", "unit_groups_file", "reference_file"}
         return common | (set(FILE_ROLES) | {"input_dir"} if self.task.currentData() == "invert" else {"source_inversion_dir"})
 
-    def update_inputs(self, inputs):
-        if inputs.get("config_file") != self.inputs.get("config_file"):
+    def agent_actions(self):
+        """Actions exposed to the host's conversational assistant."""
+        return [
+            {'name': 'prepare_inversion_folder', 'args': {'path': 'str'},
+             'desc': ('Scan a raw GeoSAGE survey folder locally, identify its files and data extents, '
+                      'and list the physical parameters that still need the user. Does not run anything.')},
+            {'name': 'set_inversion_parameters',
+             'args': {'min_e': 'number', 'max_e': 'number', 'min_n': 'number', 'max_n': 'number',
+                      'field_strength': 'number (nT)', 'inclination': 'number (degrees)',
+                      'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
+                      'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
+                      'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)'},
+             'desc': ('Set the user-confirmed region and magnetic field. Method defaults are retained '
+                      'unless the user overrides them. Returns the exact resolved run summary.')},
+            {'name': 'get_inversion_setup', 'args': {},
+             'desc': 'Read the detected files, evidence extents, missing parameters and resolved settings.'},
+            {'name': 'start_confirmed_inversion', 'args': {'objective': 'str (optional)'},
+             'desc': ('After showing the resolved settings and receiving user confirmation, start the '
+                      'joint inversion, then generate and independently review the AI report.')},
+        ]
+
+    def agent_apply(self, action, args):
+        from .survey_setup import build_configuration, inspect_survey_folder
+
+        args = dict(args or {})
+        if action == 'prepare_inversion_folder':
+            inspection = inspect_survey_folder(args.get('path') or '')
+            self.task.setCurrentIndex(self.task.findData('invert'))
+            self._survey_inspection = inspection
             self._configuration = None
+            self.inputs = {'input_dir': inspection['folder']}
+            self.preview.setPlainText('Survey files identified. Confirm the physical parameters in the conversation.')
+            return {'status': 'needs_input', 'inputs': dict(self.inputs), **inspection}
+        if action == 'get_inversion_setup':
+            inspection = getattr(self, '_survey_inspection', None)
+            if not inspection:
+                return {'status': 'needs_input', 'missing': ['survey_folder']}
+            return {'status': 'ok' if self._configuration else 'needs_input',
+                    'inspection': inspection, 'configuration': deepcopy(self._configuration)}
+        if action == 'set_inversion_parameters':
+            inspection = getattr(self, '_survey_inspection', None)
+            if not inspection:
+                return {'status': 'failed', 'error': 'Scan the survey folder first.'}
+            self._configuration = build_configuration(inspection, args)
+            self.inputs = {'input_dir': inspection['folder']}
+            self.preview.setPlainText('Confirmed run settings are ready. The source files remain read-only.')
+            return {'status': 'ready_for_confirmation', 'inputs': dict(self.inputs),
+                    'configuration': deepcopy(self._configuration),
+                    'source_files_read_only': True,
+                    'next': 'Show this summary to the user and ask for confirmation before starting.'}
+        if action == 'start_confirmed_inversion':
+            if self._configuration is None:
+                return {'status': 'failed', 'error': 'Survey parameters have not been confirmed.'}
+            objective = str(args.get('objective') or '').strip()
+            if objective:
+                self.goal.setText(objective)
+            return {'status': 'ok', 'start_workflow': True, 'request': objective or self.request(),
+                    'detail': 'Starting the confirmed inversion and reviewed report.'}
+        return {'status': 'failed', 'error': f"Unknown GeoSAGE setup action '{action}'."}
+
+    def update_inputs(self, inputs):
+        if (inputs.get("config_file") != self.inputs.get("config_file")
+                or inputs.get("input_dir") != self.inputs.get("input_dir")):
+            self._configuration = None
+            self._survey_inspection = None
         self.inputs = dict(inputs)
         self.preview.setPlainText("Inputs changed. Check the configuration before starting; it is validated again at launch.")
 

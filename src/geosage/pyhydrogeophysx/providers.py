@@ -21,7 +21,9 @@ def provider_id(settings):
 
 def ai_enabled(settings):
     """Explicit local tasks stay offline, even with a saved CLI login."""
-    if settings.get("use_ai") is False or settings.get("studio_task") in {"inspect", "invert"}:
+    if settings.get("use_ai") is False or settings.get("studio_task") == "inspect":
+        return False
+    if settings.get("studio_task") == "invert" and settings.get("use_ai") is not True:
         return False
     return bool(settings.get("api_key")) or provider_id(settings) in CLI_PROVIDERS
 
