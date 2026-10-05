@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from geosage.pyhydrogeophysx.survey_setup import build_configuration, inspect_survey_folder
+from geosage.studio_survey import build_configuration, inspect_survey_folder
 
 
 def _survey(folder: Path):
@@ -53,6 +53,7 @@ def test_configuration_requires_user_supplied_field_and_region(tmp_path):
 
 
 def test_ai_backed_new_inversion_enables_report_but_local_run_does_not(tmp_path):
+    pytest.importorskip("PyHydroGeophysX")
     from geosage.pyhydrogeophysx.configuration import configure
 
     found = inspect_survey_folder(_survey(tmp_path / "raw"))

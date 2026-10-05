@@ -191,7 +191,7 @@ class WorkflowSetup(QWidget):
         ]
 
     def agent_apply(self, action, args):
-        from .survey_setup import build_configuration, inspect_survey_folder
+        from geosage.studio_survey import build_configuration, inspect_survey_folder
 
         args = dict(args or {})
         if action == 'prepare_inversion_folder':
@@ -378,7 +378,6 @@ class WorkflowSetup(QWidget):
         buttons.accepted.connect(accept)
         buttons.rejected.connect(dialog.reject)
         dialog.exec()
-
     def show_parameters(self):
         import tempfile
 
