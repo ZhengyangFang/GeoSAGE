@@ -62,7 +62,7 @@ jobs:
           # Companion implementation pending upstream review. Keep the
           # unmodified-upstream compatibility job above as a separate check.
           repository: ZhengyangFang/PyHydroGeophysX
-          ref: 08eb2831099feafc741df5dfc99135e6040dc4db
+          ref: 3f617cbede9dd37affe232f6485da228f116b25c
           path: .upstream-phgx
           sparse-checkout: |
             PyHydroGeophysX
