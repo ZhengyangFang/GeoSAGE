@@ -14,6 +14,30 @@ from geosage.pyhydrogeophysx.workflow import run
 from test_interpret_existing import _make_source
 
 
+def test_gravity_fit_is_displayed_in_source_sign_convention():
+    from geosage.pyhydrogeophysx.visualization import _display_fit_values
+
+    observed, predicted, residual, sign = _display_fit_values(
+        "gravity", "gz", np.array([19.0, -2.0]), np.array([18.0, -1.0])
+    )
+    np.testing.assert_array_equal(observed, [-19.0, 2.0])
+    np.testing.assert_array_equal(predicted, [-18.0, 1.0])
+    np.testing.assert_array_equal(residual, [1.0, -1.0])
+    assert sign == -1.0
+
+
+def test_gravity_gradient_fit_keeps_its_source_sign():
+    from geosage.pyhydrogeophysx.visualization import _display_fit_values
+
+    observed, predicted, residual, sign = _display_fit_values(
+        "gravity", "gzz", np.array([19.0]), np.array([18.0])
+    )
+    np.testing.assert_array_equal(observed, [19.0])
+    np.testing.assert_array_equal(predicted, [18.0])
+    np.testing.assert_array_equal(residual, [-1.0])
+    assert sign == 1.0
+
+
 def archived_payload(tmp_path):
     from discretize import TensorMesh
 

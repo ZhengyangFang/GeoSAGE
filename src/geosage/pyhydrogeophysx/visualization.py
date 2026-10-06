@@ -9,6 +9,30 @@ import json
 from pathlib import Path
 
 
+_GRAVITY_ACCELERATION_COMPONENTS = frozenset({"gx", "gy", "gz"})
+
+
+def _display_fit_values(key, component, observed, predicted):
+    """Return fit arrays in the source data's sign convention.
+
+    SimPEG uses a z-positive-up Cartesian system.  Its gravity acceleration
+    components therefore have the opposite sign to conventional survey
+    anomalies, which GeoSAGE flips before inversion.  User-facing plots must
+    undo that internal conversion; gravity gradients and magnetics keep their
+    stored sign.
+    """
+    import numpy as np
+
+    sign = (
+        -1.0
+        if key == "gravity" and str(component).strip().lower() in _GRAVITY_ACCELERATION_COMPONENTS
+        else 1.0
+    )
+    observed_display = sign * np.asarray(observed)
+    predicted_display = sign * np.asarray(predicted)
+    return observed_display, predicted_display, predicted_display - observed_display, sign
+
+
 def export_results(workflow, output):
     import matplotlib.pyplot as plt
     import numpy as np
@@ -155,24 +179,41 @@ def export_results(workflow, output):
         require_real_finite(observations, f"{title} observations")
         predicted = np.asarray(predicted).ravel()
         require_real_finite(predicted, f"{title} predictions")
-        observed = observations[:, 3]
-        if observed.shape != predicted.shape:
+        observed_internal = observations[:, 3]
+        if observed_internal.shape != predicted.shape:
             raise ValueError(f"{title} prediction and observation shapes differ.")
+        component = ""
         if key == "gravity":
             component = workflow.get("config", {}).get("data", {}).get("gravity_component", "gz")
             unit = "E" if len(component) == 3 else "mGal"
-        residual = predicted - observed  # Same convention as paper notebook 4_1.
+        observed, predicted, residual, display_sign = _display_fit_values(
+            key, component, observed_internal, predicted
+        )
         fit_data[key] = (observations[:, :2], observed, predicted, residual, unit)
         metadata.setdefault("fit", {})[key] = {
             "rmse": float(np.sqrt(np.mean(residual**2))),
             "units": unit,
             "n_stations": len(observed),
             "residual_definition": "predicted - observed",
+            "display_convention": "source data sign",
+            "internal_to_display_multiplier": display_sign,
         }
     if fit_data:
         path = directory / "data_fit.png"
+        gravity_column = workflow.get("config", {}).get("data", {}).get("gravity_column")
         columns = [
-            (case, key, component.upper() if key == "gravity" else "Magnetics") for key in fit_data
+            (
+                case,
+                key,
+                (
+                    f"{component.upper()} ({gravity_column})"
+                    if key == "gravity" and gravity_column
+                    else component.upper()
+                    if key == "gravity"
+                    else "Magnetics"
+                ),
+            )
+            for key in fit_data
         ]
         render_data_fit(columns, lambda _case, key: fit_data[key], path, dpi=160, adaptive=True)
         figures["Data fit"] = str(path)

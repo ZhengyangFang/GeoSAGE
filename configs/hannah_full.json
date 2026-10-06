@@ -44,19 +44,19 @@
       2.0,
       2.0
     ],
-    "cross_gradient_lambda": 1000.0,
+    "cross_gradient_lambda": 1000000000000.0,
     "beta0_ratio": 10.0,
-    "beta_cooling": 0.8,
+    "beta_cooling": 1.1,
     "grv_bounds": [
-      -3.0,
-      3.0
+      -10.0,
+      10.0
     ],
     "mag_bounds": [
-      -3.0,
-      3.0
+      -10.0,
+      10.0
     ],
     "optimization": {
-      "maxGNCG": 50,
+      "maxGNCG": 100,
       "maxLS": 10,
       "maxCG": 1000,
       "tolCG": 0.01,

@@ -74,6 +74,8 @@ def test_configuration_requires_user_supplied_field_and_accepts_region_override(
     assert config["project"]["region_source"] == "user_override"
     assert config["project"]["region_observations"] == {"gravity": 1, "magnetic": 1}
     assert config["inversion"]["field_strength"] == 50000.0
+    assert config["inversion"]["cross_gradient_lambda"] == 1000.0
+    assert config["inversion"]["beta_cooling"] == 1.1
     assert config["data"]["gravity_column"] == "ISO"
     assert config["data"]["magnetic_column"] == "TFMA"
     assert config["geology"]["mode"] == "csv_manual"
@@ -103,6 +105,8 @@ def test_configuration_uses_validated_core_mesh_region_when_omitted(tmp_path):
         ({"flight_height_ft": -1}, "Flight height"),
         ({"max_iterations": 0}, "positive whole number"),
         ({"max_iterations": 10.5}, "positive whole number"),
+        ({"cross_gradient_lambda": -1}, "Cross-gradient weight"),
+        ({"beta_cooling": 0.8}, "Beta cooling"),
     ],
 )
 def test_configuration_rejects_invalid_method_settings(tmp_path, overrides, message):
@@ -121,6 +125,29 @@ def test_configuration_rejects_a_region_without_both_data_types(tmp_path):
             "min_e": 200, "max_e": 280, "min_n": 300, "max_n": 380,
             "field_strength": 50000, "inclination": 60, "declination": 5,
         })
+
+
+def test_configuration_accepts_explicit_joint_inversion_controls(tmp_path):
+    found = inspect_survey_folder(_survey(tmp_path / "raw"))
+    config = build_configuration(found, {
+        "field_strength": 50000, "inclination": 60, "declination": 5,
+        "cross_gradient_lambda": 1e12, "beta_cooling": 1.1,
+    })
+    assert config["inversion"]["cross_gradient_lambda"] == 1e12
+    assert config["inversion"]["beta_cooling"] == 1.1
+
+
+def test_hannah_reproduction_config_matches_archived_paper_run():
+    import json
+
+    path = Path(__file__).parents[1] / "configs" / "hannah_full.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    inversion = config["inversion"]
+    assert inversion["cross_gradient_lambda"] == 1e12
+    assert inversion["beta_cooling"] == 1.1
+    assert inversion["grv_bounds"] == [-10.0, 10.0]
+    assert inversion["mag_bounds"] == [-10.0, 10.0]
+    assert inversion["optimization"]["maxGNCG"] == 100
 
 
 def test_scan_rejects_missing_runner_columns_before_inversion(tmp_path):

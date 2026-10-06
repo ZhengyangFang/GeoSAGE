@@ -208,7 +208,9 @@ class WorkflowSetup(QWidget):
                       'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
                       'magnetic_column': 'str (optional)',
                       'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
-                      'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)'},
+                      'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)',
+                      'cross_gradient_lambda': 'number (optional)',
+                      'beta_cooling': 'number >= 1 (optional)'},
              'desc': ('Set the magnetic field and optional overrides. The validated core-mesh bounds '
                       'supply the region when it is omitted; method defaults are retained unless the '
                       'user overrides them. Returns the exact resolved run summary and input files.')},

@@ -486,6 +486,7 @@ def inspect_survey_folder(
         "method_defaults": {
             "gravity_component": "gz", "std_grv": 0.25, "std_mag": 10.0,
             "flight_height_ft": 1000.0, "max_iterations": 50,
+            "cross_gradient_lambda": 1000.0, "beta_cooling": 1.1,
         },
     }
 
@@ -532,6 +533,10 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
         raise ValueError("Flight height cannot be negative.")
     if optional["max_iterations"] < 1 or not optional["max_iterations"].is_integer():
         raise ValueError("Maximum iterations must be a positive whole number.")
+    if optional["cross_gradient_lambda"] < 0:
+        raise ValueError("Cross-gradient weight cannot be negative.")
+    if optional["beta_cooling"] < 1:
+        raise ValueError("Beta cooling must be at least 1 so beta does not grow each iteration.")
     optional["max_iterations"] = int(optional["max_iterations"])
     gravity_column = str(parameters.get("gravity_column") or inspection["detected"].get("gravity_column") or "").strip()
     if not gravity_column:
@@ -597,6 +602,8 @@ def build_configuration(inspection: dict, parameters: dict) -> dict:
         "inversion": {
             "field_strength": values["field_strength"],
             "inclination": values["inclination"], "declination": values["declination"],
+            "cross_gradient_lambda": optional["cross_gradient_lambda"],
+            "beta_cooling": optional["beta_cooling"],
             "optimization": {"maxGNCG": optional["max_iterations"]},
         },
         "geology": geology,
