@@ -74,8 +74,8 @@ def test_configuration_requires_user_supplied_field_and_accepts_region_override(
     assert config["project"]["region_source"] == "user_override"
     assert config["project"]["region_observations"] == {"gravity": 1, "magnetic": 1}
     assert config["inversion"]["field_strength"] == 50000.0
-    assert config["inversion"]["cross_gradient_lambda"] == 1000.0
-    assert config["inversion"]["beta_cooling"] == 1.1
+    assert config["inversion"]["cross_gradient_lambda"] == 50.0**4
+    assert config["inversion"]["beta_cooling"] == 2.0
     assert config["data"]["gravity_column"] == "ISO"
     assert config["data"]["magnetic_column"] == "TFMA"
     assert config["geology"]["mode"] == "csv_manual"

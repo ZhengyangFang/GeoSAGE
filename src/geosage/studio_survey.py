@@ -471,6 +471,10 @@ def inspect_survey_folder(
         missing_parameters.append("gravity_column")
     if not magnetic_column:
         missing_parameters.append("magnetic_column")
+    horizontal_cell_size = min(
+        core_mesh["cell_widths"]["x"]["min"],
+        core_mesh["cell_widths"]["y"]["min"],
+    )
     return {
         "folder": str(folder), "project": project, "files": files,
         "gravity": gravity, "magnetic": magnetic,
@@ -486,7 +490,11 @@ def inspect_survey_folder(
         "method_defaults": {
             "gravity_component": "gz", "std_grv": 0.25, "std_mag": 10.0,
             "flight_height_ft": 1000.0, "max_iterations": 50,
-            "cross_gradient_lambda": 1000.0, "beta_cooling": 1.1,
+            # Cross-gradient contains two spatial derivatives; scaling by dh**4
+            # removes the mesh-length dependence used in the SimPEG joint example.
+            "cross_gradient_lambda": horizontal_cell_size**4,
+            # PairedBetaSchedule divides beta by this factor each update.
+            "beta_cooling": 2.0,
         },
     }
 
