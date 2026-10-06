@@ -208,11 +208,13 @@ class WorkflowSetup(QWidget):
                       'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
                       'magnetic_column': 'str (optional)',
                       'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
-                      'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)'},
+                      'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)',
+                      'cross_gradient_lambda': 'number >= 0 (optional; automatic from mesh)',
+                      'beta_cooling': 'number >= 1 (optional; default 2.0)'},
              'desc': ('Set the magnetic field and optional overrides. The validated core-mesh bounds '
-                      'supply the region when it is omitted. Numerical regularization and beta cooling '
-                      'are resolved internally from the mesh and SimPEG defaults. Returns the exact '
-                      'resolved run summary and input files.')},
+                      'supply the region when it is omitted. Cross-gradient weight and beta cooling use '
+                      'general automatic defaults unless the user explicitly overrides them. Returns '
+                      'the exact resolved run summary and input files.')},
             {'name': 'get_inversion_setup', 'args': {},
              'desc': 'Read the detected files, evidence extents, missing parameters and resolved settings.'},
             {'name': 'start_confirmed_inversion', 'args': {'objective': 'str (optional)'},

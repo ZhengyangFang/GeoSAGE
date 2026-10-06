@@ -216,8 +216,7 @@ def test_workflow_exposes_and_applies_conversational_setup_actions(page, tmp_pat
     assert {'prepare_inversion_folder', 'set_inversion_parameters',
             'start_confirmed_inversion'} <= names
     public_parameters = set(actions['set_inversion_parameters']['args'])
-    assert 'cross_gradient_lambda' not in public_parameters
-    assert 'beta_cooling' not in public_parameters
+    assert {'cross_gradient_lambda', 'beta_cooling'} <= public_parameters
     scanned = page.agent_apply('prepare_inversion_folder', {'path': str(folder)})
     assert scanned['status'] == 'needs_input'
     assert page._inputs['input_dir'] == str(folder.resolve())
