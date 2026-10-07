@@ -6,10 +6,18 @@
 GeoSAGE combines joint gravity–magnetic inversion, pseudo-geological modeling,
 and language-model-assisted interpretation for the Hannah and Iowa case studies.
 
-This repository contains code, configuration templates, notebooks, tests, and
+This repository contains code, configuration templates, notebooks, and
 documentation. Input data, calculated models, figures, reports, and notebook
 outputs are not committed. Existing data archives are documented in the
 [full workflow guide](docs/usage.md).
+
+## Article
+
+**GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
+Joint Gravity and Magnetic Inversion Models**
+
+Zhengyang Fang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. ESS Open
+Archive preprint (2026). [https://doi.org/10.22541/essoar.15001940/v1](https://doi.org/10.22541/essoar.15001940/v1)
 
 > **New to GeoSAGE?** Follow the illustrated
 > [installation and Professional Studio quick start](https://zhengyangfang.github.io/GeoSAGE/).
@@ -32,9 +40,7 @@ GeoSAGE/
 ├── notebooks/           # Workflow, plotting, and assessment notebooks
 ├── configs/             # JSON examples and prompts/
 ├── examples/            # Quick checks and local archive validation
-├── tests/               # Offline regression and synthetic inversion tests
 ├── docs/                # Workflow guide and path conventions
-├── .github/workflows/   # Windows/Linux continuous integration
 ├── pyproject.toml
 └── constraints-tested.txt
 ```
@@ -75,7 +81,7 @@ The complete walkthrough is in
 Use Python 3.11–3.13. From this checkout:
 
 ```bash
-python -m pip install -e ".[notebooks,dev]"
+python -m pip install -e ".[notebooks]"
 python examples/quick_test.py
 ```
 
@@ -123,14 +129,12 @@ See [path conventions and migration](docs/paths.md) for the full precedence rule
 custom configuration files, and layout examples. See [notebooks/README.md](notebooks/README.md)
 for notebook purposes and prerequisites.
 
-## Validate
+## Optional archive validation
 
 ```bash
-python -m pytest
 python examples/validate_archived_results.py --data-root /path/to/workspace --output-dir /path/to/new/validation
 ```
 
-Tests include a small real SimPEG inversion and need no private data or API keys.
 The archive validator is optional and writes local outputs only. Historical CSV
 rebuilds can differ from archived labels; it reports that comparison separately.
 

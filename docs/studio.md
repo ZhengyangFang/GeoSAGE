@@ -137,8 +137,8 @@ the effective config and audit files alongside the results.
 
 Repeated full inversions can vary because SimPEG's initial beta estimate uses
 random power iteration. The adapter does not alter that existing behavior.
-Use archived-result mode for exact preservation. The synthetic equivalence test
-fixes the beta-estimation seed in the test only and compares both entry points.
+Use archived-result mode when an existing numerical model must be preserved
+exactly; source files are hashed before and after inspection.
 
 ## Interpretation and review
 
@@ -177,9 +177,9 @@ Do not put credentials in JSON configs.
 
 An offline summary is always `needs_review` / `NOT_REVIEWED`. A revised report
 is not described as accepted without another independent review. An interrupted
-or failed dependency chain is `incomplete`. No live paid-provider call is needed
-by the test suite; provider connectivity and scientific interpretation quality
-still require a separate real-provider acceptance run.
+or failed dependency chain is `incomplete`. The installation self-check does not
+make a paid provider call. Provider connectivity and scientific interpretation
+quality require a separate real-provider acceptance run.
 
 ## Workspace and result exploration
 
@@ -287,18 +287,13 @@ at the time; inspect an archive again to create a run using the shared plots.
 
 The host retains one model-viewer OpenGL widget across artifact and Project
 changes, resetting project data in place. This avoids the Windows compositor
-failure observed after native folder dialogs. Regression testing must include
-real Windows folder-dialog acceptance and screen capture: an offscreen Qt render
-does not detect this failure.
+failure observed after native folder dialogs. On Windows, confirm project and
+artifact switching once after installation because an offscreen check cannot
+detect compositor failures.
 
 ```bash
-python -m pytest tests
 geosage-studio --self-test
 ```
-
-Integration tests run when the optional host package is installed. They cover
-discovery, approvals, stopping, source preservation, coordinate/ID export,
-offline isolation, report review outcomes and a real small SimPEG inversion.
 
 Each Studio run needs a new output folder. Only the host's initial `UNSAVED`,
 `activity.log` and `steering.jsonl` files may already be present. Inputs,
@@ -319,5 +314,5 @@ integrity is `null` when the run stops before any source inventory is collected.
 
 This repository is code-only. Keep Project folders, input data, inversion
 results, generated VTK, figures, reports, credentials and private configs outside
-the repository. Synthetic test inputs are generated at runtime. Screenshots
-used for local UI review are not part of the source contribution.
+the repository. Screenshots used for local UI review are not part of the source
+contribution.

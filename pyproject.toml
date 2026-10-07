@@ -61,11 +61,6 @@ reports = [
     "PyPDF2>=3.0",
     "pdfplumber>=0.11",
 ]
-dev = [
-    "nbstripout>=0.7",
-    "pytest>=8.0",
-    "ruff>=0.8",
-]
 
 [project.urls]
 "Data archive" = "https://doi.org/10.5281/zenodo.22034133"
@@ -79,13 +74,5 @@ geosage-studio = "geosage.pyhydrogeophysx.launcher:main"
 
 [project.entry-points."pyhydrogeophysx.assistants"]
 geosage = "geosage.pyhydrogeophysx:ASSISTANT"
-
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

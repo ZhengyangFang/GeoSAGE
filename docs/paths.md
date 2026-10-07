@@ -1,6 +1,6 @@
 # Workspace paths and migration
 
-Install the project with `python -m pip install -e ".[notebooks,dev]"` before running
+Install the project with `python -m pip install -e ".[notebooks]"` before running
 notebooks or command-line tools. Source files now live in `src/geosage/`; imports
 must start with `geosage.`. Replace `python runner.py` with `geosage-run` or
 `python -m geosage.runner`; use `geosage-agents` and `geosage-compare` for the other

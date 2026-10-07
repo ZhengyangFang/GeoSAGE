@@ -1,6 +1,6 @@
 # Examples
 
-Install GeoSAGE first with `python -m pip install -e ".[dev]"`.
+Install GeoSAGE first with `python -m pip install -e .`.
 
 - `python examples/quick_test.py` checks package imports, configuration loading,
   and local data paths without starting an inversion.

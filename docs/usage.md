@@ -9,8 +9,8 @@ paths shown in older configuration examples are still resolved automatically.
 
 GeoSAGE is a reproducible multi-agent workflow for geological reasoning from joint
 gravity and magnetic inversion models. The project accompanies the manuscript
-**GeoSAGE: A Multi-Agent Workflow for Geological Reasoning From Joint Gravity and
-Magnetic Inversion Models**.
+**GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
+Joint Gravity and Magnetic Inversion Models**.
 
 This GitHub repository contains the source code, notebooks, project metadata, and
 lightweight examples. The case-study input data and representative computational
@@ -114,12 +114,9 @@ only the archives needed for the workflow you plan to run.
 
 ## Installation
 
-The regression suite includes a small synthetic SimPEG inversion and needs no
-case-study downloads or LLM credentials. For development, install `.[dev]` and run
-`python -m pytest`. CI runs on Windows and Linux with Python 3.11 and 3.13.
 `constraints-tested.txt` records the scientific package versions used for local
 Windows/Python 3.13 validation; apply it with
-`python -m pip install -c constraints-tested.txt ".[dev]"` when matching that environment.
+`python -m pip install -c constraints-tested.txt -e .` when matching that environment.
 SimPEG is restricted to the tested 0.25 API series until the optimization API is migrated.
 
 For exact inspection of previously saved results, use
@@ -777,12 +774,16 @@ must be removed from history before pushing.
 
 ## Citation
 
-If you use GeoSAGE, please cite the associated manuscript and the Zenodo release:
+If you use GeoSAGE, please cite the article and the Zenodo release:
 
 ```text
-Fang, Zhengyang, and Chen, Hang. 2026. GeoSAGE: A Multi-Agent Workflow for
-Geological Reasoning From Joint Gravity and Magnetic Inversion Models.
-Zenodo, version 1.0.3. https://doi.org/10.5281/zenodo.22034133
+Fang, Zhengyang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. 2026.
+GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
+Joint Gravity and Magnetic Inversion Models. ESS Open Archive.
+https://doi.org/10.22541/essoar.15001940/v1
+
+GeoSAGE software and data archive, version 1.0.3.
+https://doi.org/10.5281/zenodo.22034133
 ```
 
 Please also cite the original data and case-study sources where applicable:
