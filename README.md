@@ -13,6 +13,8 @@ outputs are not committed. Existing data archives are documented in the
 
 > **New to GeoSAGE?** Follow the illustrated
 > [installation and Professional Studio quick start](https://zhengyangfang.github.io/GeoSAGE/).
+> You can also hand the setup to
+> [Claude Code or Codex](docs/install-with-coding-agent.md).
 
 ## Project layout
 
@@ -58,6 +60,17 @@ render_data_fit` for shared plotting. The default preset preserves paper exports
 The Studio adapter exports these figures and the interactive VTK model.
 
 ## Install
+
+### With Claude Code or Codex
+
+Open an empty workspace in either coding agent and paste the
+[tested installation request](docs/install-agent-prompt.txt). It asks the agent
+to clone the official GeoSAGE and PyHydroGeophysX repositories side by side,
+create one `uv` environment, verify both packages, and open Professional Studio.
+The complete walkthrough is in
+[Install with Claude Code or Codex](docs/install-with-coding-agent.md).
+
+### Manually
 
 Use Python 3.11–3.13. From this checkout:
 
@@ -127,6 +140,8 @@ reorganization. SimPEG remains constrained to the tested 0.25 API series.
 ## Documentation and license
 
 - [Full workflow guide, archive links, and citation](docs/usage.md)
+- [Install with Claude Code or Codex](docs/install-with-coding-agent.md)
+- [What is and is not published](docs/open-source-scope.md)
 - [Path conventions and migration](docs/paths.md)
 - [Examples](examples/README.md)
 - [MIT license](LICENSE)

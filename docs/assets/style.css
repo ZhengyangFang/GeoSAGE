@@ -116,6 +116,9 @@ pre { overflow-x: auto; margin: 0; padding: 23px 25px 26px; color: #e4eaf2; back
 .prompt-card { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; margin-left: 84px; padding: 26px 28px; border-radius: 19px; color: #fff; background: linear-gradient(135deg,#0878f9,#1958dd); box-shadow: 0 20px 45px rgba(8,120,249,.2); }
 .prompt-label { display: block; margin-bottom: 6px; color: #cfe6ff; font-size: .7rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }.prompt-card p { max-width: 760px; margin: 0; font-size: 1rem; }
 .copy.light { padding: 10px 15px; border: 1px solid rgba(255,255,255,.3); border-radius: 11px; color: #fff; background: rgba(255,255,255,.11); white-space: nowrap; }
+.prompt-actions { display: flex; gap: 8px; align-items: center; }
+.prompt-actions a { text-decoration: none; font-size: .75rem; font-weight: 700; }
+.agent-steps li { min-height: 158px; }
 
 .split-info { display: grid; grid-template-columns: .85fr 1.15fr; gap: 90px; align-items: start; }
 .split-info > div > p:last-child { max-width: 500px; color: var(--muted); }

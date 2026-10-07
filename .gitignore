@@ -15,6 +15,11 @@ dist/
 uv.lock
 .pytest_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
 .audit-tmp/
 .repo-audit/
 comparisons/
@@ -42,6 +47,15 @@ validation.json
 .env
 .env.*
 !.env.example
+.claude/
+.codex/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.prof
+*.pkl
+*.pickle
 
 # Downloaded Zenodo archives
 *.zip

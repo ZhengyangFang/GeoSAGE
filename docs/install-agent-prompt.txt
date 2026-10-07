@@ -1,0 +1,33 @@
+Help me install GeoSAGE in PyHydroGeophysX Professional Studio and verify it on this computer.
+
+Official repositories:
+- PyHydroGeophysX: https://github.com/geohang/PyHydroGeophysX
+- GeoSAGE: https://github.com/ZhengyangFang/GeoSAGE
+- GeoSAGE guide: https://zhengyangfang.github.io/GeoSAGE/
+
+Use uv for the Python environment and package installation. Do not use Conda or create multiple environments unless a dependency makes that necessary and you explain why first.
+
+1. Inspect the operating system, Git, uv, available Python versions, and any existing checkouts or environment. Use Python 3.12 by default. If the repositories already exist, reuse them and do not overwrite, delete, reset, or create another clone.
+
+2. Keep the two repositories side by side in one workspace:
+   GeoSAGE-Workspace/
+   ├── PyHydroGeophysX/
+   ├── GeoSAGE/
+   └── .venv-studio/
+   Clone only a missing repository from the official URL above.
+
+3. Create one environment with:
+   uv venv .venv-studio --python 3.12
+   Install the current source checkouts in editable mode, using GeoSAGE/constraints-tested.txt and the PyHydroGeophysX desktop and desktop-3d extras. Always pass the selected environment's Python executable to uv pip.
+
+   On Windows, the install command is:
+   uv pip install --python .venv-studio\Scripts\python.exe -c GeoSAGE\constraints-tested.txt -e ".\PyHydroGeophysX[desktop,desktop-3d]" -e ".\GeoSAGE"
+
+   On macOS or Linux, it is:
+   uv pip install --python .venv-studio/bin/python -c GeoSAGE/constraints-tested.txt -e "./PyHydroGeophysX[desktop,desktop-3d]" -e "./GeoSAGE"
+
+4. Verify the actual interpreter and imported source locations with that interpreter. Run GeoSAGE/examples/quick_test.py and `python -m PyHydroGeophysX.qt_apps.launcher --self-test`. Do not download Hannah/Iowa inputs or any generated models, figures, or reports. Do not request or store an API key for installation checks.
+
+5. If verification passes, launch Professional Studio with GeoSAGE installed and give me the exact command to reopen it. PyHydroGeophysX and AQUAH should remain the default experience; GeoSAGE should appear as an optional assistant.
+
+Do not modify scientific source code as part of installation. Do not report success while a required import or self-test is failing. Summarize the workspace path, environment path, installed source revisions, checks performed, and any feature that remains unverified.

@@ -16,6 +16,7 @@
       <span>GeoSAGE</span>
     </a>
     <nav aria-label="Primary navigation">
+      <a href="#agent-install">Claude / Codex</a>
       <a href="#install">Install</a>
       <a href="#launch">Open Studio</a>
       <a href="#first-run">First workflow</a>
@@ -83,9 +84,40 @@
       </div>
     </section>
 
+    <section id="agent-install" class="content-section soft-section">
+      <div class="section-shell">
+        <div class="section-heading">
+          <p class="step-number">01</p>
+          <div>
+            <h2>Let a coding agent set it up.</h2>
+            <p>Claude Code or Codex can download both official repositories, create one <code>uv</code> environment, verify the installation, and open Studio.</p>
+          </div>
+        </div>
+
+        <ol class="workflow-steps agent-steps">
+          <li><span>1</span><div><b>Open a workspace</b><p>Create an empty folder and open it in Claude Code or Codex.</p></div></li>
+          <li><span>2</span><div><b>Paste the request</b><p>Use the tested prompt below. Review the location and commands before installation.</p></div></li>
+          <li><span>3</span><div><b>Open Studio</b><p>The agent verifies both packages and gives you the exact command to reopen the interface.</p></div></li>
+        </ol>
+
+        <div class="prompt-card">
+          <div>
+            <span class="prompt-label">Claude Code / Codex request</span>
+            <p>Install GeoSAGE in PyHydroGeophysX Professional Studio from the two official GitHub repositories. Use one uv environment with Python 3.12, reuse existing checkouts, run the quick check and Studio self-test, then launch Studio. Do not download research data or results, and do not modify scientific code.</p>
+          </div>
+          <div class="prompt-actions">
+            <button class="copy light" data-copy="agent-prompt">Copy prompt</button>
+            <a class="copy light" href="install-agent-prompt.txt" download>Full prompt</a>
+          </div>
+          <span id="agent-prompt" class="sr-only">Install GeoSAGE in PyHydroGeophysX Professional Studio from the two official GitHub repositories: https://github.com/geohang/PyHydroGeophysX and https://github.com/ZhengyangFang/GeoSAGE. Use one uv environment with Python 3.12, reuse existing checkouts, run the GeoSAGE quick check and PyHydroGeophysX Studio self-test, then launch Studio. Do not download research data or results, and do not modify scientific code. Follow https://zhengyangfang.github.io/GeoSAGE/ and report the exact command to reopen Studio.</span>
+        </div>
+        <p class="quiet-note">Read the <a href="https://github.com/ZhengyangFang/GeoSAGE/blob/main/docs/install-with-coding-agent.md">complete coding-agent walkthrough</a> if the workspace already contains either repository.</p>
+      </div>
+    </section>
+
     <section id="install" class="content-section section-shell">
       <div class="section-heading">
-        <p class="step-number">01</p>
+        <p class="step-number">02</p>
         <div>
           <h2>Install once.</h2>
           <p>Keep the two repositories beside each other. Inputs and generated results stay outside Git.</p>
@@ -145,7 +177,7 @@ uv pip install --python .venv-studio/bin/python \
     <section id="launch" class="content-section soft-section">
       <div class="section-shell">
         <div class="section-heading">
-          <p class="step-number">02</p>
+          <p class="step-number">03</p>
           <div>
             <h2>Open Professional Studio.</h2>
             <p>Launch the shared PyHydroGeophysX interface with the GeoSAGE plugin installed.</p>
@@ -172,7 +204,7 @@ uv pip install --python .venv-studio/bin/python \
 
     <section id="first-run" class="content-section section-shell">
       <div class="section-heading">
-        <p class="step-number">03</p>
+        <p class="step-number">04</p>
         <div>
           <h2>Run your first workflow.</h2>
           <p>Use the same interface for a new inversion or for an existing GeoSAGE result.</p>
@@ -219,6 +251,7 @@ uv pip install --python .venv-studio/bin/python \
         <p>Continue with the complete Studio guide or the PyHydroGeophysX documentation.</p>
       </div>
       <div class="support-links">
+        <a href="https://github.com/ZhengyangFang/GeoSAGE/blob/main/docs/install-with-coding-agent.md"><b>Claude Code / Codex setup</b><span>Guided source installation →</span></a>
         <a href="https://github.com/ZhengyangFang/GeoSAGE/blob/main/docs/studio.md"><b>GeoSAGE Studio guide</b><span>Inputs, modes and troubleshooting →</span></a>
         <a href="https://geohang.github.io/PyHydroGeophysX/agents/desktop_studio.html"><b>PyHydroGeophysX Studio</b><span>Host application documentation →</span></a>
         <a href="https://github.com/ZhengyangFang/GeoSAGE/issues"><b>Report an issue</b><span>Open a GitHub issue →</span></a>
