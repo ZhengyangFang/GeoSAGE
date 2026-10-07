@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import rasterio
 import discretize
 from geosage.paths import data_path, workspace_root
+from geosage.plotting.scales import symmetric_percentile_scale
 
 from scipy.spatial import cKDTree
 from scipy.interpolate import griddata
@@ -1108,6 +1109,9 @@ def run_joint_inversion(
 
     dens_core_3d = dens_3d[ix_start:ix_end, iy_start:iy_end, :]
     susc_core_3d = susc_3d[ix_start:ix_end, iy_start:iy_end, :]
+    ind_core_3d = ind_active.reshape(mesh.shape_cells, order="F")[
+        ix_start:ix_end, iy_start:iy_end, :
+    ]
     np.save(dens_core_path, dens_core_3d)
     np.save(susc_core_path, susc_core_3d)
     print("Wrote core-region 3D models:")
@@ -1147,15 +1151,14 @@ def run_joint_inversion(
         z_min_plot = zc_core.min() - dzp / 2
         z_max_plot = zc_core.max() + dzp / 2
 
-        vmin_grv, vmax_grv = -0.3, 0.3
-        vmin_mag, vmax_mag = -0.05, 0.05
+        density_scale = symmetric_percentile_scale(dens_core_3d, mask=ind_core_3d)
+        susceptibility_scale = symmetric_percentile_scale(susc_core_3d, mask=ind_core_3d)
+        vmin_grv, vmax_grv = density_scale["limits"]
+        vmin_mag, vmax_mag = susceptibility_scale["limits"]
 
         nx_core, ny_core, nz_core = mesh_core.shape_cells
 
         # Select up to 10 representative horizontal slices.
-        ind_act_3d = ind_active.reshape(mesh.shape_cells, order="F")
-        ind_core_3d = ind_act_3d[ix_start:ix_end, iy_start:iy_end, :]
-
         first_full = next(
             (k for k in range(nz_core) if np.all(ind_core_3d[:, :, k])), None
         )
@@ -1338,6 +1341,7 @@ def run_joint_inversion(
         "mesh": mesh,
         "mesh_core": mesh_core,
         "ind_active": ind_active,
+        "active_core_3d": ind_core_3d,
         "dens_core_3d": dens_core_3d,
         "susc_core_3d": susc_core_3d,
         "recovered_model": recovered_model,

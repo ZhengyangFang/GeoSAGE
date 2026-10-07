@@ -12,7 +12,7 @@ import numpy as np
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from scipy.interpolate import griddata
 
-from .scales import category_colors, coordinate_scale, field_scale
+from .scales import category_colors, coordinate_scale, field_scale, symmetric_percentile_scale
 
 PAPER_STYLE = {"font.family": "Arial", "font.sans-serif": ["Arial"], "axes.unicode_minus": False}
 FIT_STYLE = {
@@ -68,13 +68,17 @@ def render_model_sections(
     density_limits=(-0.4, 0.4),
     susceptibility_limits=(-0.05, 0.05),
     adaptive=False,
+    model_mask=None,
 ):
     """Physical sections; adaptive display or the original paper export preset."""
     with mpl.rc_context(DISPLAY_STYLE if adaptive else PAPER_STYLE):
         labels = np.sort(np.unique(unit_id).astype(int)) if unit_id is not None else None
         fields = [dens, susc] + ([unit_id] if labels is not None else [])
         styles = (
-            [field_scale(dens, centered=True), field_scale(susc)]
+            [
+                symmetric_percentile_scale(dens, mask=model_mask),
+                symmetric_percentile_scale(susc, mask=model_mask),
+            ]
             if adaptive
             else [
                 {"limits": density_limits, "cmap": "seismic"},
@@ -208,7 +212,7 @@ def render_model_sections(
             fig.text(
                 0.97,
                 0.98,
-                "Full range · true geometry",
+                "2–98% robust range + 0.01 · centered at zero",
                 ha="right",
                 va="top",
                 fontsize=9,

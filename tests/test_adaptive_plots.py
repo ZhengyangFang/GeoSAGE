@@ -12,7 +12,13 @@ from geosage.plotting.paper import (
     render_data_fit,
     interpolate_map,
 )
-from geosage.plotting.scales import field_scale, category_colors, coordinate_scale, middle_index
+from geosage.plotting.scales import (
+    category_colors,
+    coordinate_scale,
+    field_scale,
+    middle_index,
+    symmetric_percentile_scale,
+)
 
 
 @pytest.mark.parametrize("values", [[0, 0], [7, 7], [-7, -7], [-0.00001, 0.00002], [1, 2, 100000]])
@@ -22,6 +28,31 @@ def test_full_range_includes_constants_outliers_and_small_values(values):
     assert low < high and low <= min(values) <= max(values) <= high
     if min(values) < 0 < max(values):
         assert low == -high and scale["cmap"] == "RdBu_r"
+
+
+def test_model_scale_uses_padded_symmetric_two_to_ninety_eight_percentile_limits():
+    values = np.r_[np.linspace(-2.0, 4.0, 99), 1000.0, np.nan]
+    scale = symmetric_percentile_scale(values)
+    low, high = np.nanpercentile(values, [2, 98])
+    bound = max(abs(low), abs(high)) + 0.01
+    assert scale["limits"] == pytest.approx([-bound, bound])
+    assert scale["percentiles"] == [2.0, 98.0]
+    assert scale["padding"] == 0.01
+    assert scale["data_range"] == [-2.0, 1000.0]
+    assert scale["cmap"] == "RdBu_r"
+
+
+def test_model_scale_handles_zero_only_values():
+    assert symmetric_percentile_scale(np.zeros(8))["limits"] == [-0.01, 0.01]
+
+
+def test_model_scale_excludes_inactive_background_when_mask_is_supplied():
+    values = np.array([-4.0, -2.0, 0.0, 0.0, 3.0, 5.0])
+    active = np.array([True, True, False, False, True, True])
+    scale = symmetric_percentile_scale(values, mask=active)
+    low, high = np.percentile(values[active], [2, 98])
+    bound = max(abs(low), abs(high)) + 0.01
+    assert scale["limits"] == pytest.approx([-bound, bound])
 
 
 def test_physical_midpoint_and_coordinate_units_do_not_depend_on_cell_count():

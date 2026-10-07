@@ -4,7 +4,12 @@ import json
 from pathlib import Path
 
 from test_interpret_existing import _config, _make_source
-from geosage.multi_agent_runner import MultiAgentOrchestrator
+from geosage.multi_agent_runner import (
+    MultiAgentOrchestrator,
+    _append_standard_report_figures,
+    _prepare_report_figure_inventory,
+    _sanitize_report_image_references,
+)
 
 
 class _FakeCompletions:
@@ -58,6 +63,63 @@ class _FakeLLM:
                 ],
             }
         return {}
+
+
+def test_standard_report_figures_include_studio_overviews() -> None:
+    report = _append_standard_report_figures(
+        "# Report\n\nThe data-fit and model-section figures are listed by name.",
+        {
+            "inversion_slice_list": ["figures/data_fit.png"],
+            "combo_slice_list": ["figures/model_sections.png"],
+            "scatter_rho_kappa": "figures/property_relationships.png",
+        },
+    )
+
+    assert "![Data fit and residuals](figures/data_fit.png)" in report
+    assert "![Model sections](figures/model_sections.png)" in report
+    assert (
+        "![Density-susceptibility classification](figures/property_relationships.png)"
+        in report
+    )
+
+
+def test_standard_report_figures_do_not_duplicate_embedded_studio_image() -> None:
+    embedded = "![Existing](figures/data_fit.png)"
+    report = _append_standard_report_figures(
+        f"# Report\n\n{embedded}",
+        {
+            "inversion_slice_list": ["figures/data_fit.png"],
+            "combo_slice_list": ["figures/model_sections.png"],
+        },
+    )
+
+    assert report.count("figures/data_fit.png") == 1
+    assert "![Model sections](figures/model_sections.png)" in report
+
+
+def test_studio_report_figures_are_staged_and_survive_validation(tmp_path: Path) -> None:
+    sources = {}
+    for name in ("data_fit.png", "model_sections.png", "property_relationships.png"):
+        source = tmp_path / "generated" / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(b"test-image")
+        sources[name] = str(source)
+
+    report_dir = tmp_path / "reports"
+    inventory, allowed = _prepare_report_figure_inventory(
+        {
+            "inversion_slice_list": [sources["data_fit.png"]],
+            "combo_slice_list": [sources["model_sections.png"]],
+            "scatter_rho_kappa": sources["property_relationships.png"],
+        },
+        report_dir,
+    )
+    report = _append_standard_report_figures("# Report", inventory)
+    report, removed = _sanitize_report_image_references(report, report_dir, allowed)
+
+    assert removed == []
+    assert report.count("![") == 3
+    assert all((report_dir / reference).is_file() for reference in allowed)
 
 
 def test_review_revision_is_one_round(tmp_path: Path) -> None:

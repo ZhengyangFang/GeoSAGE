@@ -28,6 +28,43 @@ def field_scale(values, *, centered=False):
     }
 
 
+def symmetric_percentile_scale(values, *, lower=2.0, upper=98.0, padding=0.01, mask=None):
+    """Return robust, zero-centred limits from finite percentile endpoints.
+
+    Values outside the limits remain in the plot and saturate at the end
+    colours, so isolated extremes do not wash out the main model structure.
+    """
+    if not 0.0 <= lower < upper <= 100.0:
+        raise ValueError("Percentile limits must satisfy 0 <= lower < upper <= 100.")
+    if not np.isfinite(padding) or padding < 0.0:
+        raise ValueError("Colour-scale padding must be a finite non-negative value.")
+    values = np.asarray(values)
+    valid = np.isfinite(values)
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != values.shape:
+            raise ValueError("Display mask must match the values shape.")
+        valid &= mask
+    finite = values[valid]
+    if not finite.size:
+        raise ValueError("Display values must contain at least one finite value.")
+    low, high = (float(v) for v in np.percentile(finite, [lower, upper]))
+    bound = max(abs(low), abs(high)) + float(padding)
+    if not np.isfinite(bound) or bound == 0.0:
+        bound = 1.0
+    return {
+        "limits": [-bound, bound],
+        "cmap": "RdBu_r",
+        "data_range": [float(finite.min()), float(finite.max())],
+        "percentile_range": [low, high],
+        "percentiles": [float(lower), float(upper)],
+        "padding": float(padding),
+        "range_policy": (
+            f"symmetric {lower:g}–{upper:g} percentile range plus {padding:g} padding"
+        ),
+    }
+
+
 def category_colors(labels):
     """One colour per actual ID; sparse IDs are never treated as continuous."""
     ids = sorted(int(v) for v in np.unique(labels) if v != 0)

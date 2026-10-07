@@ -49,6 +49,9 @@ def export_results(workflow, output):
     directory = output / "viewer"
     density = np.asarray(inv["dens_core_3d"])
     susceptibility = np.asarray(inv["susc_core_3d"])
+    active_core = inv.get("active_core_3d")
+    if active_core is not None:
+        active_core = np.asarray(active_core, dtype=bool)
     require_real_finite(density, "Density model")
     require_real_finite(susceptibility, "Susceptibility model")
     shape = tuple(mesh.shape_cells)
@@ -119,7 +122,7 @@ def export_results(workflow, output):
         "implementation": "geosage.plotting.paper",
         "preset": "adaptive",
         "dpi": 160,
-        "range_policy": "full range per run; observations and predictions share a scale",
+        "range_policy": "model sections use symmetric 2–98 percentile limits plus 0.01 padding; data-fit observations and predictions share a scale",
         "z_indices": k_indices,
         "y_indices": j_indices,
         "z_positions_m": [float(centers[2][k]) for k in k_indices],
@@ -140,6 +143,7 @@ def export_results(workflow, output):
         output=path,
         dpi=160,
         adaptive=True,
+        model_mask=active_core,
     )
     plt.close(fig)
     figures["Model sections"] = str(path)

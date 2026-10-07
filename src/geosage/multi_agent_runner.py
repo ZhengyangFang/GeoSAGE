@@ -182,7 +182,15 @@ def _sanitize_report_windows_paths(report_text: str) -> str:
 
 
 def _append_standard_report_figures(report_text: str, fig_paths: Dict[str, Any]) -> str:
-    """Append a fixed common figure set so cross-LLM reports remain comparable."""
+    """Append a compact common figure set when the LLM did not embed it.
+
+    ``build_quasi_geology`` in the Studio integration exposes its two overview
+    figures through ``inversion_slice_list`` and ``combo_slice_list``.  Older
+    workflows instead expose individual sections through
+    ``combo_section_list``.  Keep both schemas here because this function is
+    the deterministic last line of defence after an LLM drafts or revises the
+    report.
+    """
 
     candidates: List[Tuple[str, str]] = []
 
@@ -191,6 +199,12 @@ def _append_standard_report_figures(report_text: str, fig_paths: Dict[str, Any])
             candidates.append((title, reference))
 
     add("Density-susceptibility classification", fig_paths.get("scatter_rho_kappa"))
+    inversion_overviews = fig_paths.get("inversion_slice_list", [])
+    if isinstance(inversion_overviews, list) and inversion_overviews:
+        add("Data fit and residuals", inversion_overviews[0])
+    model_overviews = fig_paths.get("combo_slice_list", [])
+    if isinstance(model_overviews, list) and model_overviews:
+        add("Model sections", model_overviews[0])
     add("Archived pseudo-geological model", fig_paths.get("geo_3d"))
     geo_figures = fig_paths.get("geo_geo_id_pngs", [])
     if isinstance(geo_figures, list):
@@ -208,11 +222,14 @@ def _append_standard_report_figures(report_text: str, fig_paths: Dict[str, Any])
         match.group(1).strip().replace("\\", "/")
         for match in re.finditer(r"!\[[^\]]*\]\(([^)]+)\)", report_text)
     }
-    blocks = [
-        f"### {title}\n\n![]({reference})"
-        for title, reference in candidates
-        if reference not in existing
-    ]
+    blocks: List[str] = []
+    appended: set[str] = set()
+    for title, reference in candidates:
+        normalized = reference.replace("\\", "/")
+        if normalized in existing or normalized in appended:
+            continue
+        blocks.append(f"### {title}\n\n![{title}]({normalized})")
+        appended.add(normalized)
     if not blocks:
         return report_text
     return report_text.rstrip() + "\n\n## Selected Supporting Figures\n\n" + "\n\n".join(blocks) + "\n"
@@ -2699,6 +2716,10 @@ class MultiAgentOrchestrator:
             user_request=user_request,
             use_vision=False,
         )
+        # The Studio exposes the draft before the separate review stage.  Add
+        # the deterministic figure appendix now so step-by-step users see the
+        # actual figures immediately, even when the LLM only mentions names.
+        draft = _append_standard_report_figures(draft, fig_paths)
         draft, removed_draft_images = _sanitize_report_image_references(
             draft,
             report_dir,

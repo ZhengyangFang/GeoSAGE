@@ -19,6 +19,7 @@ from discretize.utils import active_from_xyz
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from scipy import ndimage
 from geosage.paths import data_path, result_path
+from geosage.plotting.scales import symmetric_percentile_scale
 from geosage.validation import require_labels, require_real_finite
 
 
@@ -522,8 +523,10 @@ def build_geology_model(
     bounds = np.concatenate([all_geo_plot - 0.5,
                              [all_geo_plot[-1] + 0.5]])
     norm = BoundaryNorm(bounds, ncolors=n_geo)
-    vmax_dens = float(np.nanmax(np.abs(dens_core_3d)))/5 if np.isfinite(dens_core_3d).any() else 1e-6
-    vmax_susc = float(np.nanmax(np.abs(susc_core_3d)))/5 if np.isfinite(susc_core_3d).any() else 1e-6
+    density_limits = symmetric_percentile_scale(dens_core_3d, mask=active_mask_3d)["limits"]
+    susceptibility_limits = symmetric_percentile_scale(
+        susc_core_3d, mask=active_mask_3d
+    )["limits"]
 
     # XY slices.
     z_indices = np.linspace(0, nz - 1, 10, dtype=int)
@@ -555,8 +558,8 @@ def build_geology_model(
             dens_xy.T,
             origin="lower",
             cmap="seismic",
-            vmin=-vmax_dens,
-            vmax=vmax_dens,
+            vmin=density_limits[0],
+            vmax=density_limits[1],
             extent=[xc[0], xc[-1], yc[0], yc[-1]],
         )
         fig_c.colorbar(im1, ax=ax1, label="Density contrast (g/cc)")
@@ -567,8 +570,8 @@ def build_geology_model(
             susc_xy.T,
             origin="lower",
             cmap="seismic",
-            vmin=-vmax_susc,
-            vmax=vmax_susc,
+            vmin=susceptibility_limits[0],
+            vmax=susceptibility_limits[1],
             extent=[xc[0], xc[-1], yc[0], yc[-1]],
         )
         fig_c.colorbar(im2, ax=ax2, label="Susceptibility (SI)")
@@ -610,8 +613,8 @@ def build_geology_model(
         pc1 = ax1.pcolormesh(
             Xg, Zg, dens_xz.T,
             cmap="seismic",
-            vmin=-vmax_dens,
-            vmax=vmax_dens,
+            vmin=density_limits[0],
+            vmax=density_limits[1],
             shading="auto",
         )
         fig_c.colorbar(pc1, ax=ax1, label="Density contrast (g/cc)")
@@ -621,8 +624,8 @@ def build_geology_model(
         pc2 = ax2.pcolormesh(
             Xg, Zg, susc_xz.T,
             cmap="seismic",
-            vmin=-vmax_susc,
-            vmax=vmax_susc,
+            vmin=susceptibility_limits[0],
+            vmax=susceptibility_limits[1],
             shading="auto",
         )
         fig_c.colorbar(pc2, ax=ax2, label="Susceptibility (SI)")
