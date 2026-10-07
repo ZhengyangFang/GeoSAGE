@@ -1,5 +1,8 @@
 # GeoSAGE
 
+- **Desktop host:** [PyHydroGeophysX Professional Studio](https://github.com/geohang/PyHydroGeophysX)
+- **Start here:** [Install GeoSAGE and open it in PyHydroGeophysX](https://zhengyangfang.github.io/GeoSAGE/)
+
 GeoSAGE combines joint gravity–magnetic inversion, pseudo-geological modeling,
 and language-model-assisted interpretation for the Hannah and Iowa case studies.
 
@@ -82,7 +85,8 @@ Imports use the package name: `from geosage.runner import run_workflow`.
 
 ## Desktop Studio integration
 
-GeoSAGE can run as an optional assistant in PyHydroGeophysX Studio, reusing its
+GeoSAGE can run as an optional assistant in
+[PyHydroGeophysX Professional Studio](https://github.com/geohang/PyHydroGeophysX), reusing its
 workflow UI, light/dark theme, step approvals and result viewers. The integration
 supports new configured inversions and exact reuse of archived models, with
 offline numerical summaries or provider-backed interpretation and review.
