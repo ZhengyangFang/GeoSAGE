@@ -7,26 +7,18 @@ not introduce a second desktop application or replace the inversion kernel.
 
 ## Current compatibility
 
-The adapter targets the assistant entry-point API in PyHydroGeophysX 0.5.0,
-paired with upstream commit `4510ceece691c446e5a86b60193341f899643184`
-and the accompanying host integration branch.
-Use the source checkouts while this integration is under review: a release
-carrying the same version number may predate that API.
-
-The desktop enhancements are available in the
-[companion host branch](https://github.com/ZhengyangFang/PyHydroGeophysX/tree/feature/geosage-conversation).
-Until they are merged upstream, pair GeoSAGE `main` with that branch:
+The adapter targets the assistant entry-point API in PyHydroGeophysX 0.5.0.
+Use the current source checkouts because the latest packaged release may predate
+that API. Pair GeoSAGE `main` with the upstream PyHydroGeophysX `main` branch:
 
 ```bash
 git clone https://github.com/ZhengyangFang/GeoSAGE.git
-git clone --branch feature/geosage-conversation https://github.com/ZhengyangFang/PyHydroGeophysX.git
+git clone https://github.com/geohang/PyHydroGeophysX.git
 ```
 
-The accompanying host changes add an explicit offline-workflow capability,
-multi-property VTK selection, per-property colour defaults and a persistent
-`needs_review` status. The plugin can register with the unmodified scaffold;
-these UI enhancements and the ``geosage-studio`` launcher require the accompanying host branch. A packaged desktop
-executable will need a rebuild to include this optional package.
+The optional GeoSAGE package registers with the host's assistant interface. A
+prebuilt desktop executable must be rebuilt with GeoSAGE included before it can
+discover the plugin, so the source installation below is currently recommended.
 
 ## Install from two local checkouts
 
@@ -34,9 +26,9 @@ Use a separate Python 3.11–3.13 environment to preserve an existing scientific
 environment. From the parent containing `GeoSAGE/` and `PyHydroGeophysX/`:
 
 ```powershell
-python -m venv .venv-studio
-.venv-studio\Scripts\python -m pip install -c GeoSAGE/constraints-tested.txt -e "./PyHydroGeophysX[desktop,desktop-3d]" -e "./GeoSAGE[dev]"
-.venv-studio\Scripts\geosage-studio --module one_click
+uv venv .venv-studio --python 3.12
+uv pip install --python .venv-studio\Scripts\python.exe -c GeoSAGE/constraints-tested.txt -e "./PyHydroGeophysX[desktop,desktop-3d]" -e "./GeoSAGE"
+.venv-studio\Scripts\geosage-studio.exe --module one_click
 ```
 
 On Linux/macOS use `.venv-studio/bin/python` and `.venv-studio/bin/geosage-studio`.

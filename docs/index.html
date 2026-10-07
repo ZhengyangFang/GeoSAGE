@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Install GeoSAGE with uv and run it inside PyHydroGeophysX Professional Studio.">
+  <meta name="theme-color" content="#f5f7fa">
+  <title>GeoSAGE · Install and open the Studio</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="GeoSAGE home">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>GeoSAGE</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#install">Install</a>
+      <a href="#launch">Open Studio</a>
+      <a href="#first-run">First workflow</a>
+      <a class="nav-github" href="https://github.com/ZhengyangFang/GeoSAGE">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero section-shell">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> Agentic geological modeling</p>
+        <h1>From survey data<br>to an interpretable model.</h1>
+        <p class="hero-lede">
+          GeoSAGE runs inside <a href="https://github.com/geohang/PyHydroGeophysX">PyHydroGeophysX</a>
+          Professional Studio. Install both source packages once, then use the desktop interface to inspect,
+          invert, visualize and report your gravity–magnetic project.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#install">Install with uv</a>
+          <a class="button secondary" href="https://github.com/geohang/PyHydroGeophysX">View PyHydroGeophysX</a>
+        </div>
+        <div class="trust-row" aria-label="Project properties">
+          <span>Python 3.11–3.13</span>
+          <span>Local computation</span>
+          <span>MIT licensed</span>
+        </div>
+      </div>
+
+      <div class="studio-card" aria-label="Illustration of the GeoSAGE workflow in Professional Studio">
+        <div class="window-bar">
+          <span class="traffic"><i></i><i></i><i></i></span>
+          <strong>Professional Studio</strong>
+          <span class="window-mode">GeoSAGE</span>
+        </div>
+        <div class="studio-body">
+          <aside>
+            <span class="side-label">WORKFLOW</span>
+            <b class="active"><i></i>Data &amp; reports</b>
+            <span class="side-label lower">PROJECT</span>
+            <b><i></i>Saved results</b>
+          </aside>
+          <div class="canvas">
+            <span class="canvas-kicker">JOINT INVERSION</span>
+            <h2>Your data. One guided workflow.</h2>
+            <div class="model-graphic" aria-hidden="true">
+              <div class="layer layer-top"></div>
+              <div class="layer layer-water"></div>
+              <div class="layer layer-base"></div>
+              <span class="trace t1"></span><span class="trace t2"></span><span class="trace t3"></span>
+              <span class="trace t4"></span><span class="trace t5"></span>
+            </div>
+            <div class="stage-row">
+              <span>Plan</span><i></i><span>Invert</span><i></i><span>Evaluate</span><i></i><span>Report</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="notice section-shell" aria-label="Important installation note">
+      <div class="notice-icon">i</div>
+      <div>
+        <strong>Install from source for the GeoSAGE integration.</strong>
+        <p>The current PyHydroGeophysX release package predates the complete plugin interface. The steps below install the current source checkouts into one small, reusable <code>uv</code> environment.</p>
+      </div>
+    </section>
+
+    <section id="install" class="content-section section-shell">
+      <div class="section-heading">
+        <p class="step-number">01</p>
+        <div>
+          <h2>Install once.</h2>
+          <p>Keep the two repositories beside each other. Inputs and generated results stay outside Git.</p>
+        </div>
+      </div>
+
+      <div class="prereq-grid">
+        <a class="prereq" href="https://git-scm.com/downloads">
+          <span class="prereq-icon">⌘</span>
+          <span><b>Git</b><small>Download source code</small></span>
+          <span aria-hidden="true">↗</span>
+        </a>
+        <a class="prereq" href="https://docs.astral.sh/uv/getting-started/installation/">
+          <span class="prereq-icon uv">uv</span>
+          <span><b>uv</b><small>Fast environment manager</small></span>
+          <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+
+      <div class="code-card">
+        <div class="code-tabs" role="tablist" aria-label="Operating system">
+          <button class="tab active" role="tab" aria-selected="true" aria-controls="windows-code" data-tab="windows-code">Windows</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="unix-code" data-tab="unix-code">macOS / Linux</button>
+        </div>
+
+        <div id="windows-code" class="code-panel active" role="tabpanel">
+          <div class="code-title"><span>PowerShell</span><button class="copy" data-copy="windows-install">Copy</button></div>
+          <pre id="windows-install"><code>mkdir GeoSAGE-Workspace
+cd GeoSAGE-Workspace
+git clone https://github.com/geohang/PyHydroGeophysX.git
+git clone https://github.com/ZhengyangFang/GeoSAGE.git
+
+uv venv .venv-studio --python 3.12
+uv pip install --python .venv-studio\Scripts\python.exe `
+  -c GeoSAGE\constraints-tested.txt `
+  -e ".\PyHydroGeophysX[desktop,desktop-3d]" `
+  -e ".\GeoSAGE"</code></pre>
+        </div>
+
+        <div id="unix-code" class="code-panel" role="tabpanel" hidden>
+          <div class="code-title"><span>Terminal</span><button class="copy" data-copy="unix-install">Copy</button></div>
+          <pre id="unix-install"><code>mkdir GeoSAGE-Workspace &amp;&amp; cd GeoSAGE-Workspace
+git clone https://github.com/geohang/PyHydroGeophysX.git
+git clone https://github.com/ZhengyangFang/GeoSAGE.git
+
+uv venv .venv-studio --python 3.12
+uv pip install --python .venv-studio/bin/python \
+  -c GeoSAGE/constraints-tested.txt \
+  -e "./PyHydroGeophysX[desktop,desktop-3d]" \
+  -e "./GeoSAGE"</code></pre>
+        </div>
+      </div>
+
+      <p class="quiet-note">The environment is created once and reused. GeoSAGE does not publish input data, calculated models or reports in its code repository.</p>
+    </section>
+
+    <section id="launch" class="content-section soft-section">
+      <div class="section-shell">
+        <div class="section-heading">
+          <p class="step-number">02</p>
+          <div>
+            <h2>Open Professional Studio.</h2>
+            <p>Launch the shared PyHydroGeophysX interface with the GeoSAGE plugin installed.</p>
+          </div>
+        </div>
+
+        <div class="launch-grid">
+          <div class="code-card compact">
+            <div class="code-title"><span>Windows</span><button class="copy" data-copy="windows-launch">Copy</button></div>
+            <pre id="windows-launch"><code>.\.venv-studio\Scripts\geosage-studio.exe --module one_click</code></pre>
+          </div>
+          <div class="code-card compact">
+            <div class="code-title"><span>macOS / Linux</span><button class="copy" data-copy="unix-launch">Copy</button></div>
+            <pre id="unix-launch"><code>./.venv-studio/bin/geosage-studio --module one_click</code></pre>
+          </div>
+        </div>
+
+        <div class="callout">
+          <span class="callout-number">1</span>
+          <div><b>The Studio opens with its normal PyHydroGeophysX experience.</b><p>AQUAH remains the default assistant. Open the Assistant panel and choose <strong>GeoSAGE</strong> when you want the geological modeling workflow.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="first-run" class="content-section section-shell">
+      <div class="section-heading">
+        <p class="step-number">03</p>
+        <div>
+          <h2>Run your first workflow.</h2>
+          <p>Use the same interface for a new inversion or for an existing GeoSAGE result.</p>
+        </div>
+      </div>
+
+      <ol class="workflow-steps">
+        <li><span>1</span><div><b>Select GeoSAGE</b><p>Open <strong>Assistant</strong>, then choose GeoSAGE from the assistant menu.</p></div></li>
+        <li><span>2</span><div><b>Choose a task</b><p>Open <strong>Data &amp; reports</strong>. Select View results, New inversion or AI interpretation.</p></div></li>
+        <li><span>3</span><div><b>Add your input</b><p>Choose a survey folder for a new run, or an existing GeoSAGE inversion folder for inspection and interpretation.</p></div></li>
+        <li><span>4</span><div><b>Check before running</b><p>Use <strong>Check inputs &amp; preview configuration</strong>. GeoSAGE reports missing physical parameters instead of guessing them.</p></div></li>
+        <li><span>5</span><div><b>Run at your pace</b><p>Use step-by-step approval to inspect every action, or Auto to report for one continuous workflow.</p></div></li>
+        <li><span>6</span><div><b>Review the evidence</b><p>Open Results for data fit and model sections, Visualization for the 3D model, and Report for the reviewed interpretation.</p></div></li>
+      </ol>
+
+      <div class="prompt-card">
+        <div>
+          <span class="prompt-label">Example request</span>
+          <p>Use my survey folder to prepare a new GeoSAGE inversion. Inspect the files, ask me for parameters that cannot be derived, then run it and review the report.</p>
+        </div>
+        <button class="copy light" data-copy="sample-prompt">Copy prompt</button>
+        <span id="sample-prompt" class="sr-only">Use my survey folder to prepare a new GeoSAGE inversion. Inspect the files, ask me for parameters that cannot be derived, then run it and review the report.</span>
+      </div>
+    </section>
+
+    <section class="content-section soft-section">
+      <div class="section-shell split-info">
+        <div>
+          <p class="eyebrow"><span></span> What stays local</p>
+          <h2>Your research files remain yours.</h2>
+          <p>Numerical input, inversion models, figures and reports are stored in your selected local workspace. The public GeoSAGE repository contains code, templates and tests only.</p>
+        </div>
+        <div class="info-list">
+          <div><b>No account needed</b><span>Inspect existing results and run numerical tasks locally.</span></div>
+          <div><b>AI is optional</b><span>Configure a provider only for conversational planning, interpretation and report review.</span></div>
+          <div><b>Auditable outputs</b><span>Configurations, numerical summaries, figures and reports remain together in the run folder.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section section-shell support">
+      <div>
+        <h2>Need more detail?</h2>
+        <p>Continue with the complete Studio guide or the PyHydroGeophysX documentation.</p>
+      </div>
+      <div class="support-links">
+        <a href="https://github.com/ZhengyangFang/GeoSAGE/blob/main/docs/studio.md"><b>GeoSAGE Studio guide</b><span>Inputs, modes and troubleshooting →</span></a>
+        <a href="https://geohang.github.io/PyHydroGeophysX/agents/desktop_studio.html"><b>PyHydroGeophysX Studio</b><span>Host application documentation →</span></a>
+        <a href="https://github.com/ZhengyangFang/GeoSAGE/issues"><b>Report an issue</b><span>Open a GitHub issue →</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="section-shell">
+      <span><b>GeoSAGE</b> · Geological modeling with agentic AI</span>
+      <span><a href="https://github.com/ZhengyangFang/GeoSAGE">Source</a> · <a href="https://github.com/ZhengyangFang/GeoSAGE/blob/main/LICENSE">MIT License</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/site.js"></script>
+</body>
+</html>

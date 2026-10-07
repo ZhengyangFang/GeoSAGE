@@ -8,10 +8,14 @@ documentation. Input data, calculated models, figures, reports, and notebook
 outputs are not committed. Existing data archives are documented in the
 [full workflow guide](docs/usage.md).
 
+> **New to GeoSAGE?** Follow the illustrated
+> [installation and Professional Studio quick start](https://zhengyangfang.github.io/GeoSAGE/).
+
 ## Project layout
 
 | Task | Start here |
 | --- | --- |
+| Install and open the desktop interface | [Visual quick start](https://zhengyangfang.github.io/GeoSAGE/) |
 | Explore models, figures and reports | [Studio guide](docs/studio.md) |
 | Run or interpret a case | `configs/`, then the commands below |
 | Reproduce paper figures and assessments | [Notebook guide](notebooks/README.md) |
