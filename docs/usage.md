@@ -8,9 +8,9 @@ paths shown in older configuration examples are still resolved automatically.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 GeoSAGE is a reproducible multi-agent workflow for geological reasoning from joint
-gravity and magnetic inversion models. The project accompanies the manuscript
-**GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
-Joint Gravity and Magnetic Inversion Models**.
+gravity and magnetic inversion models. The project accompanies the article
+**GeoSAGE: A multi-agent workflow for geological reasoning from joint gravity and
+magnetic inversion models**, published in *Computers & Geosciences*.
 
 This GitHub repository contains the source code, notebooks, project metadata, and
 lightweight examples. The case-study input data and representative computational
@@ -777,10 +777,10 @@ must be removed from history before pushing.
 If you use GeoSAGE, please cite the article and the Zenodo release:
 
 ```text
-Fang, Zhengyang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. 2026.
-GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
-Joint Gravity and Magnetic Inversion Models. ESS Open Archive.
-https://doi.org/10.22541/essoar.15001940/v1
+Fang, Zhengyang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. 2027.
+GeoSAGE: A multi-agent workflow for geological reasoning from joint gravity and
+magnetic inversion models. Computers & Geosciences 218, 106282.
+https://doi.org/10.1016/j.cageo.2026.106282
 
 GeoSAGE software and data archive, version 1.0.3.
 https://doi.org/10.5281/zenodo.22034133

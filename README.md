@@ -13,11 +13,12 @@ outputs are not committed. Existing data archives are documented in the
 
 ## Article
 
-**GeoSAGE: A Reproducible Multi-Agent Framework for Geological Reasoning From
-Joint Gravity and Magnetic Inversion Models**
+**GeoSAGE: A multi-agent workflow for geological reasoning from joint gravity
+and magnetic inversion models**
 
-Zhengyang Fang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. ESS Open
-Archive preprint (2026). [https://doi.org/10.22541/essoar.15001940/v1](https://doi.org/10.22541/essoar.15001940/v1)
+Zhengyang Fang, Pu Yang, Yuxin Liu, Deshan Feng, and Hang Chen. *Computers &
+Geosciences* 218 (2027), 106282.
+[https://doi.org/10.1016/j.cageo.2026.106282](https://doi.org/10.1016/j.cageo.2026.106282)
 
 > **New to GeoSAGE?** Follow the illustrated
 > [installation and Professional Studio quick start](https://zhengyangfang.github.io/GeoSAGE/).

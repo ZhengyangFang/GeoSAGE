@@ -63,6 +63,7 @@ reports = [
 ]
 
 [project.urls]
+"Article" = "https://doi.org/10.1016/j.cageo.2026.106282"
 "Data archive" = "https://doi.org/10.5281/zenodo.22034133"
 "Zenodo record" = "https://zenodo.org/records/22034133"
 
