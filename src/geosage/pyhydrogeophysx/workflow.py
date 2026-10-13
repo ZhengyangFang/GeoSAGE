@@ -23,6 +23,23 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     provider = provider_id(payload)
     cfg = configure(payload)
     use_ai = ai_enabled(payload)
+    recovery = None
+    if cfg.get('report_recovery'):
+        from copy import deepcopy
+        from geosage.report_recovery import read_handoff
+        if not use_ai:
+            raise ValueError('Report retry needs an AI provider; the saved numerical results remain available.')
+        recovery = read_handoff(cfg['report_recovery'])
+        # Retry the original question and evidence; changed scientific settings need a new interpretation.
+        reference = cfg['report_recovery']
+        inputs = cfg['studio_inputs']
+        cfg = deepcopy(recovery['config'])
+        cfg.update(report_recovery=reference, studio_inputs=inputs, user_request=recovery['goal'])
+        cfg['run'].update(execution_mode='interpret_existing', run_inversion=False,
+                          run_geology_model=False, write_reports=True, review_enabled=True)
+        source = recovery['workflow']['run_manifest']['source_inversion_dir']
+        cfg['project'].update(source_inversion_dir=source, output_dir=source,
+                              interpretation_output_dir=str(Path(payload['output_dir']).resolve() / 'interpretation'))
     output = Path(payload["output_dir"]).expanduser().resolve()
     if output.exists():
         bootstrap = {"UNSAVED", "activity.log", "steering.jsonl"}
@@ -48,6 +65,10 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     ctx = RunContext(
         goal=cfg["user_request"], config=cfg, output_dir=str(output), settings=settings
     )
+    if recovery:
+        from geosage.report_recovery import restore, save_handoff
+        restore(ctx, recovery)
+        save_handoff(ctx, ctx.get('draft_report'))
     if payload.get("use_rag") or payload.get("use_mcp"):
         ctx.note(
             "GeoSAGE uses the configured local geological reference; Studio RAG/MCP retrieval is not enabled for this workflow."

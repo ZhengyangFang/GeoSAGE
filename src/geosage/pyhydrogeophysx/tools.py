@@ -4,11 +4,9 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
-import shutil
 
 from PyHydroGeophysX.agents.runtime.tools import Tool
 
-from .configuration import FILE_ROLES
 from .providers import ai_enabled
 
 
@@ -31,8 +29,6 @@ def fingerprint(path):
 
 
 def prepare_data(ctx):
-    import numpy as np
-    import pandas as pd
     from geosage.existing_results import REQUIRED_ARTIFACTS
 
     cfg = ctx.config
@@ -48,67 +44,14 @@ def prepare_data(ctx):
         return "Validated the archived models; inversion will be reused without recomputation.", {
             "field_data": {"source": str(source), "files": [fingerprint(p) for p in paths]}
         }
-    name = project["name"]
-    root = Path(project["input_dir"])
-    files = {
-        role: Path(inputs.get(role) or root / f"{name}_{suffix}")
-        for role, suffix in FILE_ROLES.items()
-    }
-    missing = [str(p) for p in files.values() if not p.is_file()]
-    if missing:
-        raise FileNotFoundError(
-            "Full inversion requires two CSV surveys, a GeoTIFF and two UBC meshes: "
-            + ", ".join(missing)
-        )
-    counts = []
-    import rasterio
+    from geosage.survey_io import stage_inputs, use_staged_inputs
 
-    with rasterio.open(files["topography_file"]) as topography:
-        if not topography.crs:
-            raise ValueError("The topography GeoTIFF needs a coordinate reference system (CRS).")
-        geographic_topography = bool(topography.crs.is_geographic)
-    for role, column in (
-        ("gravity_file", cfg["data"]["gravity_column"]),
-        ("magnetic_file", cfg["data"].get("magnetic_column", "TFMA")),
-    ):
-        table = pd.read_csv(files[role])
-        required = ["Easting", "Northing", column]
-        if role == "gravity_file":
-            required.append("Height")
-            if geographic_topography:
-                # Geographic rasters need a projected survey CRS. The gravity
-                # longitude/latitude pair establishes it deterministically.
-                required.extend(["Longitude", "Latitude"])
-        absent = set(required) - set(table.columns)
-        if absent:
-            raise ValueError(
-                f"{role} missing columns: {', '.join(sorted(absent))}. "
-                "Use projected metres and corresponding longitude/latitude degrees."
-            )
-        if not np.isfinite(table[required].to_numpy(dtype=float)).all():
-            raise ValueError(f"{role} contains non-finite coordinates or observations.")
-        r = cfg["region"]
-        inside = (
-            (table.Easting > r["min_e"])
-            & (table.Easting < r["max_e"])
-            & (table.Northing > r["min_n"])
-            & (table.Northing < r["max_n"])
-        )
-        if not inside.any():
-            raise ValueError(f"{role} has no stations inside the configured region.")
-        counts.append(int(inside.sum()))
-    # Preserve originals; the existing numerical kernel expects these names.
     stage = Path(ctx.output_dir) / "inputs"
-    originals = [fingerprint(p) for p in files.values()]
-    stage.mkdir(exist_ok=False)
-    for (role, path), original in zip(files.items(), originals):
-        staged = stage / f"{name}_{FILE_ROLES[role]}"
-        shutil.copy2(path, staged)
-        if fingerprint(staged)["sha256"] != original["sha256"]:
-            raise RuntimeError(f"Input changed while staging: {path}. Start a new run.")
-    project["input_dir"] = str(stage)
+    manifest = stage_inputs(cfg, stage)
+    use_staged_inputs(cfg, stage, manifest)
+    counts = manifest['station_counts']
     return f"Validated {counts[0]} gravity and {counts[1]} magnetic stations in the study area.", {
-        "field_data": {"files": originals, "station_counts": counts}
+        "field_data": manifest
     }
 
 
@@ -149,6 +92,8 @@ def run_joint_inversion(ctx):
                 progress("Joint inversion", 0.0, detail)
 
     result = run_workflow(cfg, progress_callback=report_iteration)
+    if cfg["run"]["execution_mode"] == "full":
+        result["inversion_result"]["iteration_history"] = deepcopy(ctx.settings.get("iterations", []))
     effective = result["effective_config"]
     effective["run"] = deepcopy(ctx.config["run"])
     effective["geology"] = deepcopy(ctx.config["geology"])
@@ -196,10 +141,15 @@ def build_quasi_geology(ctx):
 
 def write_report(ctx):
     geo = ctx.get("geo_model")
+    from geosage.report_recovery import save_handoff
+    save_handoff(ctx)
     if ai_enabled(ctx.settings) and ctx.config["run"].get("write_reports", True):
         draft = _orchestrator(ctx).write_report_draft(
             ctx.config, geo["workflow"], ctx.goal, geo["prepared"]
         )
+        from geosage.report_recovery import read_handoff
+        read_handoff(ctx.settings['report_handoff'])
+        save_handoff(ctx, draft)
         return "Wrote the interpretation draft; independent review is still required.", {
             "draft_report": draft
         }
@@ -229,7 +179,11 @@ def write_report(ctx):
             "",
         ]
     draft = Path(ctx.output_dir) / "evidence_summary.md"
-    draft.write_text("\n".join(lines), encoding="utf-8")
+    from geosage.report_recovery import append_record, audit_images
+    text = append_record("\n".join(lines), prepared, ctx.config, draft.parent)
+    audit_images(text, draft.parent, {Path(p).relative_to(ctx.output_dir).as_posix()
+                                    for p in geo['exports']['figures'].values()})
+    draft.write_text(text, encoding="utf-8")
     return "Wrote a numerical evidence summary; LLM interpretation is not enabled.", {
         "draft_report": {"offline": True, "path": str(draft)}
     }
@@ -247,8 +201,11 @@ def review_report(ctx):
             "review_decision": "NOT_REVIEWED",
         }
     ctx.config["run"]["review_enabled"] = True
+    from geosage.report_recovery import read_handoff
+    read_handoff(ctx.settings['report_handoff'])
     cfg = deepcopy(ctx.config)
     result = _orchestrator(ctx).review_report_draft(cfg, ctx.get("property_models"), draft)
+    read_handoff(ctx.settings['report_handoff'])
     decision = (result.get("review") or {}).get("decision", "NOT_REVIEWED")
     if decision != "ACCEPT":
         ctx.note(

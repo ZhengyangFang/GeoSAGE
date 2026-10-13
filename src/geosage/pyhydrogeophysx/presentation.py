@@ -34,3 +34,26 @@ def numerical_overview(summary):
         lines.append('')
     lines += ['[Full numerical record](numerical_summary.json)', '']
     return lines
+
+
+def comparison_overview(result):
+    """Compact comparison in the existing details card, with no new workspace."""
+    def table(headers, rows):
+        return '<table cellspacing="6"><tr>' + ''.join(f'<th>{escape(h)}</th>' for h in headers) + '</tr>' + ''.join(
+            '<tr>' + ''.join(f'<td>{escape(str(cell))}</td>' for cell in row) + '</tr>' for row in rows) + '</table>'
+    from pathlib import Path
+    html = f'<b>{escape(result.get("left_label") or Path(result["left"]).name)} → {escape(result.get("right_label") or Path(result["right"]).name)}</b>'
+    rows = []
+    for kind, fit in result['fits'].items():
+        rows.append((kind.title(), _number((fit['left'] or {}).get('rmse')) + ' ' + (fit['left'] or {}).get('units',''),
+                     _number((fit['right'] or {}).get('rmse')) + ' ' + (fit['right'] or {}).get('units',''),
+                     'Same observations' if fit['comparable'] else 'Not directly comparable'))
+    html += table(('Data fit', 'Left RMSE', 'Right RMSE', 'Comparison'), rows)
+    rows = [(name.replace('_core', '').title(), _number(model.get('rms_change')), model['units'])
+            for name, model in result['models'].items()]
+    html += table(('Model', 'RMS change', 'Unit'), rows)
+    if result['parameter_differences']:
+        html += '<b>Changed recorded parameters</b>' + table(('Parameter', 'Left', 'Right'),
+            [(key, value['left'], value['right']) for key, value in result['parameter_differences'].items()])
+    html += ''.join(f'<p>{escape(note)}</p>' for note in result['limitations'])
+    return html

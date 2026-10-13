@@ -100,7 +100,7 @@ def run_joint_inversion(
     select_region: list[float] | tuple[float, float, float, float] | None = None,
     target_grv_data: str = DEFAULT_TARGET_GRV_DATA,
     target_mag_data: str = DEFAULT_TARGET_MAG_DATA,
-    gravity_component: str = DEFAULT_GRAVITY_COMPONENT,
+    gravity_component: str | None = None,
     std_grv: float = DEFAULT_STD_GRV,
     std_mag: float = DEFAULT_STD_MAG,
     std_grv_relative: bool = False,
@@ -130,6 +130,7 @@ def run_joint_inversion(
     IRLSbeta_tol: float = DEFAULT_IRLS_BETA_TOL,
     make_plots: bool = True,
     progress_callback=None,
+    survey_crs: str | None = None,
 ) -> dict:
     """
     Run the full gravity + magnetic joint inversion workflow.
@@ -145,7 +146,8 @@ def run_joint_inversion(
     select_region : [min_e, max_e, min_n, max_n], optional
     gravity_component : str, optional
         Gravity component to invert. Options: gx, gy, gz, gxx, gxy, gxz, gyy, gyz, gzz.
-        Default is "gz" (vertical gravity acceleration).
+        If omitted, infer recognizable component columns; otherwise default to "gz".
+        An explicit component conflicting with a recognizable column is rejected.
     std_grv : float, optional
         Standard deviation for gravity data (absolute or relative).
     std_mag : float, optional
@@ -249,7 +251,7 @@ def run_joint_inversion(
         easting_grv_raw = df_grv["Easting"].values
         northing_grv_raw = df_grv["Northing"].values
         
-        if "Longitude" in df_grv.columns and "Latitude" in df_grv.columns:
+        if not survey_crs and "Longitude" in df_grv.columns and "Latitude" in df_grv.columns:
             lon_grv_raw = df_grv["Longitude"].values
             lat_grv_raw = df_grv["Latitude"].values
             zone = int(np.floor((lon_grv_raw.mean() + 180) / 6) + 1)
@@ -260,15 +262,24 @@ def run_joint_inversion(
     else:
         lon_grv_raw = df_grv['Longitude'].values
         lat_grv_raw = df_grv['Latitude'].values
-        zone = int(np.floor((lon_grv_raw.mean() + 180) / 6) + 1)
-        hemisphere = 'north' if lat_grv_raw.mean() >= 0 else 'south'
-        print(f"UTM Zone: {zone}{' Northern' if hemisphere=='north' else ' Southern'}")
-
-        crs_utm = CRS.from_epsg(32600 + zone) if hemisphere == 'north' else CRS.from_epsg(32700 + zone)
+        if survey_crs:
+            from geosage.survey_io import projected_crs
+            crs_utm = projected_crs(survey_crs)
+            print(f"Survey CRS: {crs_utm.to_string()}")
+        else:
+            zone = int(np.floor((lon_grv_raw.mean() + 180) / 6) + 1)
+            hemisphere = 'north' if lat_grv_raw.mean() >= 0 else 'south'
+            print(f"UTM Zone: {zone}{' Northern' if hemisphere=='north' else ' Southern'}")
+            crs_utm = CRS.from_epsg(32600 + zone) if hemisphere == 'north' else CRS.from_epsg(32700 + zone)
         transformer = Transformer.from_crs("EPSG:4326", crs_utm, always_xy=True)
         easting_grv_raw, northing_grv_raw = transformer.transform(lon_grv_raw, lat_grv_raw)
         df_grv['Easting'] = easting_grv_raw
         df_grv['Northing'] = northing_grv_raw
+
+    if survey_crs:
+        from geosage.survey_io import projected_crs
+        crs_utm = projected_crs(survey_crs)
+        transformer = Transformer.from_crs("EPSG:4326", crs_utm, always_xy=True)
 
     height_grv_raw = df_grv["Height"].values
 
@@ -308,26 +319,8 @@ def run_joint_inversion(
     target_grv_data = str(grv_col)
     obs_grv_raw = df_grv[target_grv_data].values
 
-    # Auto-fix obvious unit/system mismatch between selected column and gravity component.
-    grad_components = {"gxx", "gxy", "gxz", "gyy", "gyz", "gzz"}
-    accel_components = {"gx", "gy", "gz"}
-    anomaly_like_cols = {"og", "faa", "sba", "cba", "iso", "gz", "gravity"}
-    selected_l = target_grv_data.strip().lower()
-
-    if comp_l in grad_components and selected_l in anomaly_like_cols:
-        print(
-            f"[WARN] gravity_component='{gravity_component}' is a gradient, but column '{target_grv_data}' "
-            "looks like anomaly/acceleration data. Auto-switching gravity_component to 'gz'."
-        )
-        gravity_component = "gz"
-        comp_l = "gz"
-    elif comp_l in accel_components and selected_l in grad_components:
-        print(
-            f"[WARN] gravity_component='{gravity_component}' is acceleration, but column '{target_grv_data}' "
-            f"looks like gradient data. Auto-switching gravity_component to '{selected_l}'."
-        )
-        gravity_component = selected_l
-        comp_l = selected_l
+    from .survey_io import resolve_gravity_component
+    gravity_component = resolve_gravity_component(target_grv_data, gravity_component)
 
     mask_grv = (
         (easting_grv_raw > min_e) & (easting_grv_raw < max_e) &
@@ -441,44 +434,46 @@ def run_joint_inversion(
     print(f"  Elevation(Z): {zmin_mesh:.2f} ~ {zmax_mesh:.2f}")
     print(f"  Cell: {mesh.shape_cells}")
 
-    hx = mesh.h[0]
-    hy = mesh.h[1]
-    x_mask = np.isclose(hx, hx.min(), rtol=1e-3, atol=1e-3 * hx.min())
-    y_mask = np.isclose(hy, hy.min(), rtol=1e-3, atol=1e-3 * hy.min())
-    idx = np.where(x_mask)[0]
-    idy = np.where(y_mask)[0]
-    if (idx.size == 0) or (idy.size == 0):
-        raise ValueError("No cells near min spacing found; check mesh.h.")
-
-    x_breaks = np.where(np.diff(idx) > 1)[0]
-    y_breaks = np.where(np.diff(idy) > 1)[0]
-    x_segments = np.split(idx, x_breaks + 1)
-    y_segments = np.split(idy, y_breaks + 1)
-    x_core_seg = max(x_segments, key=len)
-    y_core_seg = max(y_segments, key=len)
-
-    ix_start, ix_end = x_core_seg[0] + 1, x_core_seg[-1]
-    iy_start, iy_end = y_core_seg[0] + 1, y_core_seg[-1]
-    print(f"index of core region in x direction:", ix_start, "->", ix_end)
-    print(f"index of core region in y direction:", iy_start, "->", iy_end)
-
-    hx_core = hx[ix_start:ix_end]
-    hy_core = hy[iy_start:iy_end]
-    hz_core = mesh.h[2].copy()
-
-    x0_core = x_nodes[ix_start]
-    y0_core = y_nodes[iy_start]
-    z0_core = mesh.x0[2]
-
     if input_msh_core.exists():
         print(f"Found existing core mesh file, reading: {input_msh_core}")
-        mesh_core = discretize.TensorMesh._readUBC_3DMesh(input_msh_core)
+        mesh_core = discretize.TensorMesh.read_UBC(input_msh_core)
     else:
         print("No existing core mesh file found, generating new core mesh...")
+        hx = mesh.h[0]
+        hy = mesh.h[1]
+        x_mask = np.isclose(hx, hx.min(), rtol=1e-3, atol=1e-3 * hx.min())
+        y_mask = np.isclose(hy, hy.min(), rtol=1e-3, atol=1e-3 * hy.min())
+        idx = np.where(x_mask)[0]
+        idy = np.where(y_mask)[0]
+        if (idx.size == 0) or (idy.size == 0):
+            raise ValueError("No cells near min spacing found; check mesh.h.")
+
+        x_breaks = np.where(np.diff(idx) > 1)[0]
+        y_breaks = np.where(np.diff(idy) > 1)[0]
+        x_segments = np.split(idx, x_breaks + 1)
+        y_segments = np.split(idy, y_breaks + 1)
+        x_core_seg = max(x_segments, key=len)
+        y_core_seg = max(y_segments, key=len)
+
+        ix_start, ix_end = x_core_seg[0] + 1, x_core_seg[-1]
+        iy_start, iy_end = y_core_seg[0] + 1, y_core_seg[-1]
+
+        hx_core = hx[ix_start:ix_end]
+        hy_core = hy[iy_start:iy_end]
+        hz_core = mesh.h[2].copy()
+
+        x0_core = x_nodes[ix_start]
+        y0_core = y_nodes[iy_start]
+        z0_core = mesh.x0[2]
+
         mesh_core = discretize.TensorMesh(
             [hx_core, hy_core, hz_core],
             x0=(x0_core, y0_core, z0_core),
         )
+
+    from geosage.survey_io import core_mesh_slices
+    core_slices = core_mesh_slices(mesh, mesh_core)
+    print("Core cell ranges in full mesh:", [(s.start, s.stop) for s in core_slices])
 
     cell_size_xy = float(np.min(mesh_core.h[0]))
     print("core mesh range:")
@@ -497,7 +492,7 @@ def run_joint_inversion(
         topo_crs = src.crs
         if topo_crs is None:
             raise ValueError("Topography GeoTIFF has no coordinate reference system (CRS).")
-        topo_raw = src.read(1)
+        topo_raw = src.read(1, masked=True).astype(float).filled(np.nan)
         width, height = src.width, src.height
         print("GeoTIFF CRS:", src.crs)
 
@@ -508,7 +503,6 @@ def run_joint_inversion(
         print(f"  Y: {lat_topo_min:.4f} ~ {lat_topo_max:.4f}")
 
         transform_full = transform
-        topo_raw = src.read(1)
 
     nrows_topo_raw, ncols_topo_raw = topo_raw.shape
     rows, cols = np.meshgrid(
@@ -679,7 +673,7 @@ def run_joint_inversion(
         northing_mag_raw = df_mag["Northing"].values
         # If Longitude/Latitude are also provided, use them to infer UTM zone
         # and create transformer for later topography/magnetic reuse
-        if {"Longitude", "Latitude"} <= set(df_mag.columns):
+        if not survey_crs and {"Longitude", "Latitude"} <= set(df_mag.columns):
             lon_mag_raw = df_mag["Longitude"].values
             lat_mag_raw = df_mag["Latitude"].values
             zone = int(np.floor((lon_mag_raw.mean() + 180) / 6) + 1)
@@ -690,11 +684,15 @@ def run_joint_inversion(
     elif {"Longitude", "Latitude"} <= set(df_mag.columns):
         lon_mag_raw = df_mag["Longitude"].values
         lat_mag_raw = df_mag["Latitude"].values
-        zone = int(np.floor((lon_mag_raw.mean() + 180) / 6) + 1)
-        hemisphere = "north" if lat_mag_raw.mean() >= 0 else "south"
-        print(f"UTM Zone: {zone}{' Northern' if hemisphere=='north' else ' Southern'}")
-
-        crs_utm = CRS.from_epsg(32600 + zone) if hemisphere == "north" else CRS.from_epsg(32700 + zone)
+        if survey_crs:
+            from geosage.survey_io import projected_crs
+            crs_utm = projected_crs(survey_crs)
+            print(f"Survey CRS: {crs_utm.to_string()}")
+        else:
+            zone = int(np.floor((lon_mag_raw.mean() + 180) / 6) + 1)
+            hemisphere = "north" if lat_mag_raw.mean() >= 0 else "south"
+            print(f"UTM Zone: {zone}{' Northern' if hemisphere=='north' else ' Southern'}")
+            crs_utm = CRS.from_epsg(32600 + zone) if hemisphere == "north" else CRS.from_epsg(32700 + zone)
         transformer = Transformer.from_crs("EPSG:4326", crs_utm, always_xy=True)
         easting_mag_raw, northing_mag_raw = transformer.transform(lon_mag_raw, lat_mag_raw)
         df_mag["Easting"] = easting_mag_raw
@@ -891,6 +889,7 @@ def run_joint_inversion(
         "output_dir": str(output_root),
         "select_region": [float(x) for x in select_region],
         "gravity_component": gravity_component,
+        **({"survey_crs": survey_crs} if survey_crs else {}),
         "target_gravity_column": target_grv_data,
         "target_magnetic_column": target_mag_data,
         "std_grv": float(std_grv),
@@ -1107,11 +1106,9 @@ def run_joint_inversion(
     dens_3d = dens_full.reshape((nx, ny, nz), order="F")
     susc_3d = susc_full.reshape((nx, ny, nz), order="F")
 
-    dens_core_3d = dens_3d[ix_start:ix_end, iy_start:iy_end, :]
-    susc_core_3d = susc_3d[ix_start:ix_end, iy_start:iy_end, :]
-    ind_core_3d = ind_active.reshape(mesh.shape_cells, order="F")[
-        ix_start:ix_end, iy_start:iy_end, :
-    ]
+    dens_core_3d = dens_3d[core_slices]
+    susc_core_3d = susc_3d[core_slices]
+    ind_core_3d = ind_active.reshape(mesh.shape_cells, order="F")[core_slices]
     np.save(dens_core_path, dens_core_3d)
     np.save(susc_core_path, susc_core_3d)
     print("Wrote core-region 3D models:")

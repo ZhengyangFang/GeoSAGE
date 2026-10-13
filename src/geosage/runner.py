@@ -363,6 +363,12 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]], *, progress_callback=
             region_cfg["min_n"],
             region_cfg["max_n"],
         ]
+        if project_cfg.get('input_files') or cfg.get('data_import'):
+            from geosage.survey_io import stage_inputs, use_staged_inputs
+
+            stage = project_output / 'inputs'
+            manifest = stage_inputs(cfg, stage)
+            use_staged_inputs(cfg, stage, manifest)
         inversion_result = run_joint_inversion(
             project_name=project_cfg["name"],
             input_dir=project_cfg["input_dir"],
@@ -404,6 +410,7 @@ def run_workflow(config: Union[str, Path, Dict[str, Any]], *, progress_callback=
             IRLSbeta_tol=inv_cfg["irls"]["IRLSbeta_tol"],
             make_plots=run_cfg.get("make_plots", True),
             progress_callback=progress_callback,
+            survey_crs=data_cfg.get("projected_crs"),
         )
         source_manifest = build_source_manifest(source_dir)
         # The solver can resolve aliases, gravity components and region bounds.

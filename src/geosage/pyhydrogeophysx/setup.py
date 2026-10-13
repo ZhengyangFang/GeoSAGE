@@ -5,7 +5,7 @@ from copy import deepcopy
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -36,8 +36,11 @@ class WorkflowSetup(QWidget):
         self.inputs = {}
         self._configuration = None
         self._survey_inspection = None
+        self._survey_parameters = {}
+        self._survey_quality = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignTop)
         self.task = QComboBox()
         for label, key in (("Inspect existing results · local", "inspect"),
                            ("Run a new inversion · local", "invert"),
@@ -62,6 +65,17 @@ class WorkflowSetup(QWidget):
         self.goal.setPlaceholderText("Optional objective or question about these results")
         self.goal.setAccessibleName("Analysis objective")
         layout.addWidget(self.goal)
+        from .survey_preview import SurveyPreview
+        self.survey_preview = SurveyPreview(self)
+        layout.addWidget(self.survey_preview)
+        self.reference_summary = QTextBrowser()
+        self.reference_summary.setOpenExternalLinks(True)
+        self.reference_summary.setMaximumHeight(150)
+        self.reference_summary.setAccessibleName('Reference data awaiting confirmation')
+        self.reference_summary.hide()
+        layout.addWidget(self.reference_summary)
+        from .reference_data import ReferenceData
+        self.references = ReferenceData(self)
         self.edit = QPushButton("Create / edit inversion configuration")
         self.edit.clicked.connect(self.edit_configuration)
         self.options = QPushButton('Options')
@@ -130,6 +144,8 @@ class WorkflowSetup(QWidget):
         self.preview.setPlainText(str(message))
 
     def _task_changed(self):
+        self.references.show()
+        self.survey_preview.setVisible(self.task.currentData() == 'invert' and self.survey_preview.data is not None)
         self.edit.setVisible(self.task.currentData() == "invert")
         self.goal.setVisible(self.needs_ai)
         self.note.setText({
@@ -167,6 +183,9 @@ class WorkflowSetup(QWidget):
         if not path.is_file():
             raise ValueError('The continuation configuration is missing. Reopen the original output folder.')
         config = json.loads(path.read_text(encoding='utf-8'))
+        if config.get('report_recovery'):
+            from geosage.report_recovery import read_handoff
+            read_handoff(config['report_recovery'])
         source = Path(continuation['source_inversion_dir'])
         from geosage.existing_results import REQUIRED_ARTIFACTS
 
@@ -185,27 +204,39 @@ class WorkflowSetup(QWidget):
 
     def agent_actions(self):
         """Actions exposed to the host's conversational assistant."""
-        return [
+        from .reference_data import ACTIONS
+        return ACTIONS + [
+            {'name': 'prepare_report_retry', 'args': {'path': 'str (saved Studio run folder)'},
+             'desc': 'Validate saved report handoff and prepare only the failed draft/review steps. Does not run inversion, regroup geology or start work. Use normal start after user confirms.'},
+            {'name': 'compare_saved_runs', 'args': {'left': 'str (saved run/model folder)', 'right': 'str (saved run/model folder)'},
+             'desc': 'Read-only parameter, model and data-fit comparison. Refuse cell differences on unmatched grids/CRS; disclose non-comparable observations. No new Project or files.'},
             {'name': 'prepare_inversion_folder',
              'args': {'path': 'str',
                       'gravity_file': 'str (optional when discovery is ambiguous)',
                       'magnetic_file': 'str (optional when discovery is ambiguous)',
                       'topography_file': 'str (optional when discovery is ambiguous)',
                       'mesh_file': 'str (optional when discovery is ambiguous)',
-                      'core_mesh_file': 'str (optional when discovery is ambiguous)'},
-             'desc': ('Scan a raw survey folder locally; identify survey roles from file content and '
-                      'descriptive names, validate CSV observations, parse the '
-                      'full and core UBC meshes, read GeoTIFF bounds/CRS, check spatial coverage, and '
-                      'derive the inversion region from the core mesh. Lists only physical parameters '
-                      'that still need the user and does not run anything. Explicit role paths resolve '
-                      'ambiguous folders without renaming source files.')},
+                      'core_mesh_file': 'str (optional when discovery is ambiguous)',
+                      'data_import': ('object (optional): projected_crs; gravity_file and magnetic_file '
+                                      'options: sheet, header (null for headerless), skiprows, delimiter, '
+                                      'encoding, decimal, na_values, columns (canonical name to source name), '
+                                      'crs, coordinate_unit, height_unit, measurement_unit, missing_policy '
+                                      '(error or explicit drop), exclude_rows (explicit 1-based source data record IDs); '
+                                      'topography_file: crs, height_unit, band')},
+             'desc': ('Recursively inspect raw survey files, excluding saved results and environment folders. '
+                      'Return partial inventory, format labels, role candidates, selection evidence, '
+                      'missing_files and validation_issues even when terrain or meshes are absent. '
+                      'Read CSV/TSV/TXT/XYZ/Excel observations, UBC meshes and GeoTIFF/ASCII terrain; other formats '
+                      'may still need conversion. Resolve ambiguous roles using explicit file paths, '
+                      'then scan again. No inversion is started.')},
             {'name': 'set_inversion_parameters',
              'args': {'min_e': 'number (optional; core-mesh minimum)',
                       'max_e': 'number (optional; core-mesh maximum)',
                       'min_n': 'number (optional; core-mesh minimum)',
                       'max_n': 'number (optional; core-mesh maximum)',
-                      'field_strength': 'number (nT)', 'inclination': 'number (degrees)',
-                      'declination': 'number (degrees)', 'gravity_column': 'str (optional)',
+                      'field_strength': 'number (nT; optional if already set)', 'inclination': 'number (degrees; optional if already set)',
+                      'declination': 'number (degrees; optional if already set)', 'gravity_column': 'str (optional)',
+                      'gravity_component': 'str (optional: gx, gy, gz, gxx, gxy, gxz, gyy, gyz, gzz)',
                       'magnetic_column': 'str (optional)',
                       'std_grv': 'number (optional)', 'std_mag': 'number (optional)',
                       'flight_height_ft': 'number (optional)', 'max_iterations': 'int (optional)',
@@ -217,52 +248,155 @@ class WorkflowSetup(QWidget):
                       'the exact resolved run summary and input files.')},
             {'name': 'get_inversion_setup', 'args': {},
              'desc': 'Read the detected files, evidence extents, missing parameters and resolved settings.'},
+            {'name': 'preview_survey_data', 'args': {'gravity_column': 'str (optional)', 'magnetic_column': 'str (optional)'},
+             'desc': 'Show station/measurement/terrain previews in this page and return quality findings with original data row IDs. No inversion or input edits. Choosing a different column invalidates prior run configuration.'},
+            {'name': 'set_survey_row_exclusions', 'args': {'role': 'gravity_file or magnetic_file', 'rows': 'list of 1-based source data record IDs; [] restores all manually excluded rows'},
+             'desc': 'Only on explicit user instruction: replace the excluded rows for this input, rescan and invalidate the run configuration. Rows refer to source data records after header/skiprows, not text line numbers. Never exclude anomalies automatically.'},
             {'name': 'start_confirmed_inversion', 'args': {'objective': 'str (optional)'},
              'desc': ('After showing the resolved settings and receiving user confirmation, start the '
                       'joint inversion, then generate and independently review the AI report.')},
         ]
 
     def agent_apply(self, action, args):
-        from geosage.studio_survey import build_configuration, inspect_survey_folder
+        from geosage.studio_survey import build_configuration, inspect_survey_folder, inspection_text
 
         args = dict(args or {})
+        if action == 'prepare_report_retry':
+            try:
+                path = Path(args.get('path') or '').expanduser().resolve() / 'retry_report_config.json'
+                config = json.loads(path.read_text(encoding='utf-8'))
+                inputs = self.prepare_continuation({'continuation': {'config_file': str(path),
+                    'source_inversion_dir': config['project']['source_inversion_dir']}})
+                self.note.setText('Retry the saved report only. Numerical models and figures will be reused.')
+                return {'status': 'ready_for_confirmation', 'inputs': inputs, 'recomputes_inversion': False,
+                        'next': 'Confirm, then use the normal workflow start with an AI provider.'}
+            except (ValueError, OSError, KeyError) as exc:
+                return {'status': 'failed', 'error': str(exc)}
+        if action == 'compare_saved_runs':
+            from geosage.result_comparison import compare_runs
+            try:
+                result = compare_runs(args['left'], args['right'])
+                self.options.setChecked(True)
+                self.preview.show()
+                from .presentation import comparison_overview
+                self.preview.setHtml(comparison_overview(result))
+                return result
+            except (ValueError, OSError, KeyError) as exc:
+                return {'status': 'failed', 'error': str(exc)}
+        from .reference_data import ACTIONS
+        if action in {item['name'] for item in ACTIONS}:
+            return self.references.apply(action, args)
         if action == 'prepare_inversion_folder':
+            self.references.reset()
+            self._configuration = None
+            self._survey_inspection = None
+            self._survey_parameters = {}
+            self._survey_quality = None
+            self.survey_preview.clear()
+            self.inputs = {}
             role_overrides = {
                 role: args[role] for role in FILE_ROLES if args.get(role)
             }
-            inspection = inspect_survey_folder(args.get('path') or '', role_overrides)
+            try:
+                inspection = inspect_survey_folder(args.get('path') or '', role_overrides, args.get('data_import'))
+            except ValueError as exc:
+                self.preview.setPlainText(str(exc))
+                return {'status': 'failed', 'error': str(exc)}
             self.task.setCurrentIndex(self.task.findData('invert'))
             self._survey_inspection = inspection
+            self.note.setText('Review your survey below, then confirm run settings in the conversation.')
             self._configuration = None
             self.inputs = {
                 'input_dir': inspection['folder'],
-                **{role: inspection['files'][role] for role in FILE_ROLES},
+                **{role: inspection['files'][role] for role in FILE_ROLES if role in inspection['files']},
             }
-            self.preview.setPlainText('Survey files identified. Confirm the physical parameters in the conversation.')
-            return {'status': 'needs_input', 'inputs': dict(self.inputs), **inspection}
+            self.preview.setPlainText(inspection_text(inspection))
+            self._refresh_survey_preview()
+            return {**inspection, 'status': 'needs_input', 'inputs': dict(self.inputs), 'quality': self._survey_quality}
+        if action == 'preview_survey_data':
+            if not self._survey_inspection:
+                return {'status': 'needs_input', 'missing': ['survey_folder']}
+            choices = {key: args[key] for key in ('gravity_column', 'magnetic_column') if args.get(key)}
+            if any(self._survey_parameters.get(key) != value for key, value in choices.items()):
+                self._configuration = None
+            self._survey_parameters.update(choices)
+            self.references.refresh_preview()
+            self.references.show()
+            return {'status': 'ok', 'quality': self._survey_quality, 'source_files_read_only': True}
+        if action == 'set_survey_row_exclusions':
+            inspection = self._survey_inspection
+            role, rows = args.get('role'), args.get('rows')
+            if not inspection or role not in ('gravity_file', 'magnetic_file') or role not in inspection['files']:
+                return {'status': 'failed', 'error': 'Scan and select the survey input first.'}
+            from geosage.survey_io import read_table, fingerprint
+            settings = deepcopy(inspection.get('data_import', {}))
+            try:
+                table, _ = read_table(inspection['files'][role], settings.get(role))
+                if not isinstance(rows, list) or any(type(row) is not int or not 1 <= row <= len(table) for row in rows):
+                    raise ValueError('rows must list existing 1-based source data records; use [] to undo.')
+            except (ValueError, OSError) as exc:
+                return {'status': 'failed', 'error': str(exc)}
+            settings.setdefault(role, {})['exclude_rows'] = sorted(set(rows))
+            if rows:
+                settings[role]['exclude_rows_source_sha256'] = fingerprint(inspection['files'][role])['sha256']
+            else:
+                settings[role].pop('exclude_rows_source_sha256', None)
+            parameters = deepcopy(self._survey_parameters)
+            sources = deepcopy(self.references.accepted)
+            result = self.agent_apply('prepare_inversion_folder', {'path': inspection['folder'],
+                **{r: inspection['files'][r] for r in FILE_ROLES if r in inspection['files']}, 'data_import': settings})
+            self._survey_parameters = parameters
+            self.references.accepted = sources
+            self._refresh_survey_preview()
+            result['quality'] = self._survey_quality
+            result['next'] = 'Review the updated preview, then set/confirm the run parameters again.'
+            return result
         if action == 'get_inversion_setup':
             inspection = getattr(self, '_survey_inspection', None)
             if not inspection:
                 return {'status': 'needs_input', 'missing': ['survey_folder']}
             return {'status': 'ok' if self._configuration else 'needs_input',
-                    'inspection': inspection, 'configuration': deepcopy(self._configuration)}
+                    'inspection': inspection, 'configuration': deepcopy(self._configuration), 'quality': self._survey_quality}
         if action == 'set_inversion_parameters':
             inspection = getattr(self, '_survey_inspection', None)
             if not inspection:
                 return {'status': 'failed', 'error': 'Scan the survey folder first.'}
-            self._configuration = build_configuration(inspection, args)
+            self._configuration = None
+            self.references.manual_parameters(args)
+            self._survey_parameters.update(args)
+            try:
+                self.references.check_accepted()
+                self._configuration = build_configuration(inspection, self._survey_parameters)
+                if self.references.accepted:
+                    self._configuration['reference_data'] = deepcopy(self.references.accepted)
+                from geosage.mesh_planning import configuration_preflight, parameter_sources
+                self._configuration['parameter_sources']=parameter_sources(self._configuration,self._survey_parameters,self.references.accepted)
+                self._configuration['setup_preflight']=configuration_preflight(self._configuration)
+            except (ValueError, OSError) as exc:
+                self._configuration=None
+                self.references.show()
+                self.preview.setPlainText(str(exc))
+                self._refresh_survey_preview()
+                return {'status': 'needs_input', 'error': str(exc), 'inspection': inspection}
             self.inputs = {
                 'input_dir': inspection['folder'],
-                **{role: inspection['files'][role] for role in FILE_ROLES},
+                **{role: inspection['files'][role] for role in FILE_ROLES if role in inspection['files']},
             }
-            self.preview.setPlainText('Confirmed run settings are ready. The source files remain read-only.')
+            self.preview.setPlainText('Resolved run settings are ready for confirmation. The source files remain read-only.')
+            self._refresh_survey_preview()
+            self.references.show()
             return {'status': 'ready_for_confirmation', 'inputs': dict(self.inputs),
                     'configuration': deepcopy(self._configuration),
+                    'quality': self._survey_quality,
                     'source_files_read_only': True,
                     'next': 'Show this summary to the user and ask for confirmation before starting.'}
         if action == 'start_confirmed_inversion':
             if self._configuration is None:
                 return {'status': 'failed', 'error': 'Survey parameters have not been confirmed.'}
+            try:
+                self.references.ready_to_run()
+            except (ValueError, OSError) as exc:
+                return {'status':'failed','error':str(exc)}
             objective = str(args.get('objective') or '').strip()
             if objective:
                 self.goal.setText(objective)
@@ -274,15 +408,39 @@ class WorkflowSetup(QWidget):
                     'detail': 'Starting the confirmed inversion and reviewed report.'}
         return {'status': 'failed', 'error': f"Unknown GeoSAGE setup action '{action}'."}
 
+    def _refresh_survey_preview(self, inspection=None, parameters=None):
+        from geosage.survey_quality import build_survey_preview, preview_summary
+        inspection = inspection or self._survey_inspection
+        if inspection is None:
+            return
+        try:
+            data = build_survey_preview(inspection, self._survey_parameters if parameters is None else parameters)
+            self._survey_quality = preview_summary(data)
+            self.survey_preview.set_preview(data)
+        except Exception as exc:
+            self.survey_preview.clear()
+            self._survey_quality = {'preview_error': str(exc), 'source_files_read_only': True}
+            self.preview.setPlainText(f'Survey preview unavailable: {exc}')
+
     def update_inputs(self, inputs):
-        if (inputs.get("config_file") != self.inputs.get("config_file")
-                or inputs.get("input_dir") != self.inputs.get("input_dir")):
+        if dict(inputs) == self.inputs:
+            return
+        if any(inputs.get(key) != self.inputs.get(key) for key in ('config_file', 'input_dir', *FILE_ROLES)):
             self._configuration = None
             self._survey_inspection = None
+            self._survey_parameters = {}
+            self._survey_quality = None
+            self.survey_preview.clear()
+            self.references.reset()
         self.inputs = dict(inputs)
         self.preview.setPlainText("Inputs changed. Check the configuration before starting; it is validated again at launch.")
 
     def prepare_payload(self, payload):
+        if self.task.currentData() == 'invert':
+            self.references.ready_to_run()
+        if self.task.currentData() == 'invert' and self._survey_inspection is not None:
+            if not self._survey_inspection['inputs_valid'] or self._configuration is None:
+                raise ValueError('Complete the detected input checks and resolve the parameters in the conversation before running.')
         payload = dict(payload, studio_task=self.task.currentData())
         payload['inputs'] = {k: v for k, v in payload['inputs'].items() if k in self.allowed_roles()}
         if self._configuration is not None and self.task.currentData() == 'invert':
@@ -300,7 +458,7 @@ class WorkflowSetup(QWidget):
 
             required = [Path(project["source_inversion_dir"]) / p for p in REQUIRED_ARTIFACTS.values()]
         else:
-            required = [Path(payload["inputs"].get(role) or Path(project["input_dir"]) / f'{project["name"]}_{suffix}')
+            required = [Path(payload["inputs"].get(role) or project.get('input_files', {}).get(role) or Path(project["input_dir"]) / f'{project["name"]}_{suffix}')
                         for role, suffix in FILE_ROLES.items()]
         required += [Path(cfg["geology"][k]) for k in ("unit_defs_csv", "unit_groups_csv", "context_path", "unit_id_npy") if cfg["geology"].get(k)]
         missing = [str(p) for p in required if not p.is_file()]
@@ -332,6 +490,11 @@ class WorkflowSetup(QWidget):
                     ("Source", project.get("source_inversion_dir") or project["input_dir"]),
                     ("AI", "Interpretation + independent review" if uses_ai else "Not used")]
             if cfg["run"]["execution_mode"] == "full":
+                from geosage.studio_survey import inspect_survey_folder
+                files = {role: cfg['studio_inputs'].get(role) or project.get('input_files', {}).get(role)
+                         or str(Path(project['input_dir']) / f'{project["name"]}_{suffix}') for role, suffix in FILE_ROLES.items()}
+                inspection = inspect_survey_folder(project['input_dir'], files, cfg.get('data_import'))
+                self._refresh_survey_preview(inspection, {**cfg['data'], **cfg['region']})
                 r, inv = cfg["region"], cfg["inversion"]
                 rows += [("Region (m)", f'E {r["min_e"]}–{r["max_e"]}; N {r["min_n"]}–{r["max_n"]}'),
                          ("Gravity", f'{cfg["data"]["gravity_column"]} / {cfg["data"]["gravity_component"]}'),
@@ -416,11 +579,33 @@ class WorkflowSetup(QWidget):
                     raise ValueError('Inclination must be between -90 and 90 degrees.')
                 changed.setdefault('run', {}).update(execution_mode='full', run_inversion=True)
                 changed['project']['source_inversion_dir'] = None
+                manual_changes={}
+                for (_,section,key,_),edit in zip(fields,edits):
+                    if changed[section][key] != base.get(section,{}).get(key):
+                        changed.setdefault('parameter_sources',{})[f'{section}.{key}']='user_configuration_edit'
+                        if section in ('region','data','inversion'):
+                            manual_changes[key]=changed[section][key]
+                reference=changed.get('reference_data',{}).get('geomagnetic')
+                if reference:
+                    reference['applied_parameters']={k:v for k,v in reference['applied_parameters'].items() if k not in manual_changes}
+                    if not reference['applied_parameters']:
+                        changed['reference_data'].pop('geomagnetic')
+                from geosage.mesh_planning import configuration_preflight
+                # Recompute resources for the exact edited region and parameters.
+                # Preserve the earlier source fingerprints until explicitly rescanned.
+                previous=base.get('setup_preflight',{}).get('input_fingerprints')
+                if previous:
+                    changed['setup_preflight']=configuration_preflight(changed)
+                    changed['setup_preflight']['input_fingerprints']=previous
                 self._configuration = changed
+                self.references.manual_parameters(manual_changes)
+                if self._survey_inspection is not None:
+                    self._survey_parameters.update(manual_changes)
+                self.references.show()
                 dialog.accept()
                 self.preview.show()
                 self.preview.setPlainText('Edited run configuration ready. Add survey inputs and check the complete configuration.')
-            except ValueError as exc:
+            except (ValueError, OSError) as exc:
                 error.setText(str(exc))
 
         buttons.accepted.connect(accept)

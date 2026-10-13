@@ -116,7 +116,7 @@ def _prepare_report_figure_inventory(
             return ""
         source = Path(str(raw_path)).expanduser().resolve()
         if not source.is_file():
-            return ""
+            raise FileNotFoundError(f"Declared report figure is missing: {source}")
         source_key = str(source)
         if source_key in source_to_reference:
             return source_to_reference[source_key]
@@ -1558,6 +1558,7 @@ class ReportAgent(BaseLLMAgent):
         key_figures: Optional[List[str]] = None,
         use_vision: bool = False,
         max_images: int = 6,
+        reporting_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Write a technical report based on inversion and geology modeling results.
@@ -1606,6 +1607,12 @@ Figure-path rules:
 
 [VIII. Rapid Interpretation of the Visual Model (if available, for reference)]
 {json.dumps(vision_analysis, ensure_ascii=False, indent=2)}
+
+[IX. Shared verified report evidence]
+{json.dumps(reporting_context or {}, ensure_ascii=False, indent=2)}
+Use the supplied coordinate convention, topography, unit ranges and observed row counts.
+Model z is elevation, not depth. A precise target depth requires target-depth evidence.
+Configuration limits are settings, not proof of completed iteration counts or user authorization.
 
 Please write a detailed Markdown report in English. The structure should include at least the following section:
 
@@ -1680,6 +1687,7 @@ Writing requirements:
         review: Dict[str, Any],
         evidence_bundle: Dict[str, Any],
         allowed_figure_paths: Optional[List[str]] = None,
+        reporting_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Revise only the claims identified by one deterministic review round."""
 
@@ -1701,6 +1709,9 @@ invent, rename, or derive any image path. If no suitable allowed path exists, om
 
 [EVIDENCE BUNDLE]
 {json.dumps(evidence_bundle, ensure_ascii=False, indent=2)}
+
+[SHARED VERIFIED REPORT EVIDENCE]
+{json.dumps(reporting_context or {}, ensure_ascii=False, indent=2)}
 """
         return self.ask_text(prompt, temperature=0.0)
 
@@ -1723,6 +1734,7 @@ class ReviewAgent(BaseLLMAgent):
         geology_context: str,
         draft_report: str,
         deterministic_warnings: List[str],
+        reporting_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         prompt = f"""
 Audit this draft geological interpretation report against the structured evidence below.
@@ -1769,6 +1781,12 @@ GEOLOGICAL CONTEXT:
 {geology_context}
 DETERMINISTIC WARNINGS:
 {json.dumps(deterministic_warnings, ensure_ascii=False, indent=2)}
+SHARED VERIFIED REPORT EVIDENCE:
+{json.dumps(reporting_context or {}, ensure_ascii=False, indent=2)}
+This context was also supplied to the writer. Its verified figures and generated run record
+are application-checked artifacts even when absent from the earlier numerical source manifest.
+Configuration proves settings, not completed iterations or user authorization. Keep scientific
+interpretation and target-depth claims subject to the evidence checks above.
 DRAFT REPORT:
 {draft_report}
 """
@@ -2703,6 +2721,10 @@ class MultiAgentOrchestrator:
         report_dir.mkdir(parents=True, exist_ok=True)
         fig_paths, allowed_figure_paths = _prepare_report_figure_inventory(fig_paths, report_dir)
 
+        from geosage.report_recovery import append_record, audit_images, report_context
+        append_record('', prepared, cfg, report_dir)
+        shared_context = report_context(prepared, cfg, report_dir, allowed_figure_paths)
+
         if self.llm is None:
             raise RuntimeError("Report generation requires an LLM client and an API key.")
         draft = self.report_agent.write_report(
@@ -2715,6 +2737,7 @@ class MultiAgentOrchestrator:
             fig_paths=fig_paths,
             user_request=user_request,
             use_vision=False,
+            reporting_context=shared_context,
         )
         # The Studio exposes the draft before the separate review stage.  Add
         # the deterministic figure appendix now so step-by-step users see the
@@ -2726,6 +2749,9 @@ class MultiAgentOrchestrator:
             allowed_figure_paths,
         )
         draft_path = report_dir / "draft_report.md"
+        from geosage.report_recovery import append_record, audit_images
+        draft = append_record(draft, prepared, cfg, report_dir)
+        audit_images(draft, report_dir, allowed_figure_paths)
         draft_path.write_text(draft, encoding="utf-8")
 
         return {"prepared": prepared, "draft": draft, "draft_path": draft_path,
@@ -2754,6 +2780,8 @@ class MultiAgentOrchestrator:
         review_result: Dict[str, Any] | None = None
         revision_summary: Dict[str, Any] = {"review_enabled": False, "revised": False}
         run_cfg = cfg["run"]
+        from geosage.report_recovery import report_context
+        shared_context = report_context(prepared, cfg, report_dir, allowed_figure_paths)
         if run_cfg.get("review_enabled", False):
             review_result = self.review_agent.review_report(
                 inversion_parameters=inversion_result.get("inversion_parameters", {}),
@@ -2770,6 +2798,7 @@ class MultiAgentOrchestrator:
                 deterministic_warnings=target_info.get("unknown_geo_ids", [])
                 + target_info.get("unknown_unit_ids", [])
                 + geo_result.get("grouping_adjustments", []),
+                reporting_context=shared_context,
             )
             review_path = output_dir / "reviews" / "review_round_1.json"
             review_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2781,6 +2810,7 @@ class MultiAgentOrchestrator:
                     review_result,
                     evidence,
                     allowed_figure_paths=sorted(allowed_figure_paths),
+                    reporting_context=shared_context,
                 )
                 revision_summary = {"review_enabled": True, "revised": True, "rounds": 1}
             elif review_result["decision"] == "REVISE_REPORT":
@@ -2813,6 +2843,9 @@ class MultiAgentOrchestrator:
             encoding="utf-8",
         )
         final_path = report_dir / "final_report.md"
+        from geosage.report_recovery import append_record, audit_images
+        final_report = append_record(final_report, prepared, cfg, report_dir)
+        audit_images(final_report, report_dir, allowed_figure_paths)
         final_path.write_text(final_report, encoding="utf-8")
         pdf_path = export_markdown_report_pdf(final_path, output_dir)
         stages = [{"stage": "report_draft", "status": "completed", "path": str(draft_path)}]

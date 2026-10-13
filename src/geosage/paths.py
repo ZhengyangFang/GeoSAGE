@@ -95,6 +95,9 @@ def resolve_config_paths(config: dict[str, Any], config_path: Path | None = None
         if project.get(key):
             is_output = key == "interpretation_output_dir" or (key == "output_dir" and not reuse)
             project[key] = str(resolve_path(project[key], root, output=is_output))
+    if project.get('input_files'):
+        project['input_files'] = {role: str(resolve_path(value, root))
+                                  for role, value in project['input_files'].items() if value}
     geology = config.get("geology", {})
     for key in ("unit_defs_csv", "unit_groups_csv", "context_path", "unit_id_npy"):
         if geology.get(key):

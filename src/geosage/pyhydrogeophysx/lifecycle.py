@@ -11,6 +11,11 @@ def tools_for(config, use_ai):
     from .tools import TOOLS
 
     tools = dict(TOOLS)
+    if config.get('report_recovery'):
+        from geosage.report_recovery import read_handoff
+        record = read_handoff(config['report_recovery'])
+        names = ('review_report',) if record.get('draft') else ('write_report', 'review_report')
+        return {name: tools[name] for name in names}
     if config['run']['execution_mode'] == 'interpret_existing':
         tools['run_joint_inversion'] = replace(tools['run_joint_inversion'], label='Load existing models')
     if not use_ai or not config['run'].get('write_reports', True):
@@ -57,9 +62,12 @@ def checkpoint(ctx, plan):
         config = deepcopy(ctx.config)
         config.pop('studio_inputs', None)
         config.pop('user_request', None)
+        # The model-reuse continuation starts a new question. Only the separate
+        # retry_report_config may restore the original draft and report goal.
+        config.pop('report_recovery', None)
         config['project'].update(source_inversion_dir=source, input_dir=source,
                                  output_dir=None, interpretation_output_dir=None)
-        config['run'].update(execution_mode='interpret_existing', run_inversion=False,
+        config['run'].update(execution_mode='interpret_existing', run_inversion=False, run_geology_model=True,
                              overwrite=False)
         # A full run stores its new labels alongside its numerical models.
         # Archive tasks otherwise keep their explicitly selected geology mode.
@@ -71,6 +79,9 @@ def checkpoint(ctx, plan):
         _write_json(config_path, config)
         continuation = dict(config_file=str(config_path), source_inversion_dir=source,
                             task='interpret', recomputes_inversion=False)
+        retry = root / 'retry_report_config.json'
+        if retry.is_file() and not ctx.has('report_files'):
+            continuation.update(config_file=str(retry), report_only=True)
     # Large arrays and credentials never enter the agent handoff log.
     record = dict(schema_version=1, assistant='geosage', planned_stages=plan,
                   completed_steps=[dict(row, tool=step.tool, error=step.error)

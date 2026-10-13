@@ -74,6 +74,18 @@ def configure(payload):
         if section in raw.get('inversion', {}) and not isinstance(raw['inversion'][section], dict):
             raise ValueError(f'Inversion section {section} must be a JSON object.')
     _reject_credentials(raw)
+    if raw.get('report_recovery'):
+        from geosage.report_recovery import read_handoff
+        record = read_handoff(raw['report_recovery'])
+        for section in ('region', 'data', 'data_import', 'inversion', 'geology', 'reference_data'):
+            if raw.get(section) != record['config'].get(section):
+                raise ValueError(f'Report retry cannot change {section}; start a fresh interpretation for changed settings.')
+        if set(inputs) - {'config_file', 'source_inversion_dir'}:
+            raise ValueError('Report retry uses saved evidence; additional inputs require a fresh interpretation.')
+        saved_source = Path(record['workflow']['run_manifest']['source_inversion_dir']).resolve()
+        selected_source = inputs.get('source_inversion_dir') or raw.get('project', {}).get('source_inversion_dir')
+        if not selected_source or Path(selected_source).resolve() != saved_source:
+            raise ValueError('Report retry source differs from its saved numerical models.')
     source = inputs.get("source_inversion_dir") or raw.get("project", {}).get(
         "source_inversion_dir"
     )
@@ -186,6 +198,7 @@ def configure(payload):
         if role in inputs:
             cfg["geology"][key] = inputs[role]
     protected_files = [Path(p) for role, p in inputs.items() if role not in {"input_dir", "source_inversion_dir"}]
+    protected_files += [Path(p).resolve() for p in project.get('input_files', {}).values()]
     protected_files += [
         Path(cfg["geology"][key]).expanduser().resolve()
         for key in ("unit_defs_csv", "unit_groups_csv", "context_path", "unit_id_npy")
