@@ -512,6 +512,33 @@ iteration or skip unfinished interpretation/review. The selected geology mode
 still applies; new full-run labels are reused when they were successfully saved.
 These generated records remain local and are not part of the code contribution.
 
+### Approved temporary scripts
+
+With a current PyHydroGeophysX 0.5 host, GeoSAGE uses the shared **Temporary
+scripts** chat tool. If the existing import options cannot handle a survey
+layout, ask: "Convert this file to a supported table, preserve the observations,
+and show me the preview before running inversion." The host shows the purpose
+and Python code; **Run this script** approves execution. The assistant then
+rescans the returned file path through GeoSAGE's normal setup and preview.
+
+An AI-enabled automatic run can also recover a failed **Prepare data** step.
+It offers one format-conversion attempt for a selected gravity or magnetic
+table, using the host's script generator, restricted subprocess and approval
+card. A failed script may receive one corrected version, with fresh approval.
+GeoSAGE validates the replacement against the unchanged measurement columns,
+units, CRS, mesh and region. It shows counts and value ranges and asks **Use
+converted input** before adopting it. Structural validation cannot prove a
+conversion preserved the scientific meaning; review the preview and script.
+
+The original files remain unchanged. The run retains the scripts and their
+outputs under `scratch/`, fingerprints in `input_recovery.json`, and provenance
+in the import manifest and report's `run_record.json`. Converted inputs are
+staged within the same run. No new Project is created. This does not repair
+missing measurements, change magnetic-field or inversion parameters, rewrite
+meshes or restart a failed numerical optimizer. Report-only recovery is below.
+Offline runs, absent approval, declined conversions and hosts without this
+feature keep the failure visible instead of executing generated code.
+
 ### Retry only the report
 
 Once figures and structured evidence are ready, Studio saves a small

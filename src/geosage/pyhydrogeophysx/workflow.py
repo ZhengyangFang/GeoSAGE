@@ -61,6 +61,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         "use_ai": use_ai,
         "ask_user": approve,
         "progress": progress,
+        "assistant_name": "GeoSAGE",
     }
     ctx = RunContext(
         goal=cfg["user_request"], config=cfg, output_dir=str(output), settings=settings
@@ -97,8 +98,7 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
     def ask(prompt, on_text=None):
         return model.query(prompt, temperature=0, max_tokens=500, on_text=on_text)
 
-    drive(
-        ctx,
+    drive_options = dict(
         tools=run_tools,
         ask=ask if use_ai else None,
         progress_callback=progress,
@@ -108,10 +108,22 @@ def run(payload, progress, *, approve=None, on_event=None, events=None, **_hooks
         finish="report_files",
         recovery=False,
     )
+    # Generic host recovery mutates flat AQUAH settings. GeoSAGE instead bridges
+    # approved input conversions and revalidates its nested scientific config.
+    drive(ctx, **drive_options)
+    from .input_recovery import recover_inputs
+
+    def ask_conversion(prompt, on_text=None):
+        return model.query(prompt, temperature=0, max_tokens=8000, on_text=on_text)
+
+    if recover_inputs(ctx, run_tools, ask_conversion if use_ai else None, emit):
+        ctx.ended = ''
+        drive(ctx, **drive_options)
     continuation = save_checkpoint()
     warnings = list(ctx.warnings)
+    latest_steps = {step.tool: step for step in ctx.steps}
     warnings += [
-        f"{s.description}: {s.error}" for s in ctx.steps if s.status in {"failed", "blocked"}
+        f"{s.description}: {s.error}" for s in latest_steps.values() if s.status in {"failed", "blocked"}
     ]
     field = ctx.get("field_data") or {}
     priors = ctx.get("geological_priors") or {}

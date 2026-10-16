@@ -148,6 +148,12 @@ def append_record(text, prepared, cfg, report_dir):
     appendix = ('\n## Recorded run evidence\n\n'
         '[Actual parameters, numerical summary and provenance](run_record.json)\n\n'
         'This record is generated from the saved calculation. Interpretive claims still require scientific review.\n')
+    conversions = cfg.get('input_recovery', [])
+    if conversions:
+        recovered = sum(item.get('status') == 'recovered' for item in conversions)
+        appendix += (f'\nInput format recovery: {recovered} validated conversion(s) adopted after user confirmation. '
+                     'The run record includes original and converted file fingerprints, validation results '
+                     'and temporary-script outcomes. This is not a claim of scientific equivalence.\n')
     import re
     # Replace only our own block; revisions may add conclusions or images after it.
     text = re.sub(re.escape(marker) + r'.*?' + re.escape(end_marker), '', text, flags=re.DOTALL)

@@ -46,7 +46,7 @@ def prepare_data(ctx):
         }
     from geosage.survey_io import stage_inputs, use_staged_inputs
 
-    stage = Path(ctx.output_dir) / "inputs"
+    stage = Path(getattr(ctx, 'settings', {}).get('input_stage_directory') or Path(ctx.output_dir) / "inputs")
     manifest = stage_inputs(cfg, stage)
     use_staged_inputs(cfg, stage, manifest)
     counts = manifest['station_counts']
