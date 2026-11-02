@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ def status(path: Path) -> str:
     return "FOUND" if path.exists() else "MISSING"
 
 
-def main() -> int:
+def main(*, require_data: bool = False) -> int:
     try:
         from geosage.runner import load_config
     except ModuleNotFoundError as exc:
@@ -44,6 +45,8 @@ def main() -> int:
     if missing:
         print("Quick test completed with missing data paths.")
         print("Place local inputs in data/ and archived models in outputs/, or set GEOSAGE_WORKSPACE.")
+        if require_data:
+            return 1
     else:
         print("Quick test completed. Required data paths are present.")
 
@@ -51,4 +54,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Check the GeoSAGE installation and optional local data paths.")
+    parser.add_argument(
+        "--require-data",
+        action="store_true",
+        help="Return a nonzero status when required local data paths are missing.",
+    )
+    args = parser.parse_args()
+    raise SystemExit(main(require_data=args.require_data))

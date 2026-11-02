@@ -1,10 +1,9 @@
-# Workspace paths and migration
+# Workspace paths
 
 Install the project with `python -m pip install -e ".[notebooks]"` before running
-notebooks or command-line tools. Source files now live in `src/geosage/`; imports
-must start with `geosage.`. Replace `python runner.py` with `geosage-run` or
-`python -m geosage.runner`; use `geosage-agents` and `geosage-compare` for the other
-two entry points. The old root-level modules and `tools/` helper are removed.
+notebooks or command-line tools. Imports start with `geosage.`. Use `geosage-run`,
+`geosage-agents`, and `geosage-compare`, or the corresponding `python -m geosage.*`
+module entry points.
 
 ## Preferred local layout
 
@@ -30,7 +29,7 @@ need to be renamed. Extract each input case under `data/` and each result archiv
 under `outputs/`. The validator's `--data-root` argument names the workspace that
 contains those two directories, not `data/` itself.
 
-Flat legacy layouts are supported: when `data/Hannah` is absent, an existing
+Flat archive layouts are also supported: when `data/Hannah` is absent, an existing
 `Hannah` directory directly under the workspace is used; the same applies to
 Iowa, logdata, and existing inversion result directories. Modern directories win
 when both layouts exist. New inversion and interpretation outputs use `outputs/`.
@@ -48,7 +47,7 @@ For workflow JSON configurations:
    Python dictionary). A `.geosage-workspace` file selects its directory. A
    GeoSAGE `pyproject.toml` selects its checkout, except when the checkout's
    immediate parent contains that marker: then the parent is the workspace.
-   This lets sibling code checkouts share private `data/` and `outputs/`.
+   This lets sibling code checkouts share local `data/` and `outputs/`.
 4. If neither a marker nor a checkout is found, the configuration file's directory
    (or cwd) is used.
 
