@@ -134,7 +134,7 @@ The supplied core mesh must be a contiguous subset of the full mesh with matchin
 cell boundaries on all three axes. Inspection rejects mismatched cells before
 inversion. Result extraction uses the supplied core geometry, including its depth
 range, rather than assuming a fixed number of padding cells.
-The names below describe the solver's internal layout, not naming requirements
+The names below describe files produced by the solver, not naming requirements
 for the original files.
 
 | File | Required contents |
@@ -404,10 +404,9 @@ exactly; source files are hashed before and after inspection.
 Choose **Interpret existing results · with AI**, enter your objective and select
 **Generate interpretation**. The Assistant panel opens for provider configuration
 when needed. Starting after configuration uses the same **Auto to report** route.
-The host's API client or authenticated CLI provider supplies the controller
-and existing GeoSAGE report agents. The workflow has six separate dependency-bound
-stages: prepare data, compile priors, inversion/reuse, geological model, draft,
-review. Approval occurs before each stage, including before writing and reviewing.
+The workflow has six stages: prepare data, compile priors, inversion/reuse,
+geological model, draft, and review. Approval occurs before each stage, including
+before writing and reviewing.
 Generic Gravity/Magnetics and Joint Inversion module forms are independent
 tools; editing their fields does not edit the GeoSAGE JSON configuration. Those
 pages display an explicit independence notice while GeoSAGE is selected.
@@ -415,8 +414,7 @@ pages display an explicit independence notice while GeoSAGE is selected.
 In **Assistant → Settings**, choose OpenAI/Anthropic with a session API key, or
 **Codex CLI** / **Claude Code CLI** with the host's existing setup and sign-in
 controls. CLI providers use their own saved login and need no copied API key.
-GeoSAGE does not install another CLI, read login tokens, or launch its own CLI
-subprocess. Older hosts without CLI support expose the API options only.
+GeoSAGE does not install another CLI or read login tokens.
 
 Both CLI providers support **Auto to report** and **Step-by-step assistance**.
 Workflow stage approval is independently controlled by **Approve each step
@@ -437,8 +435,8 @@ Do not put credentials in JSON configs.
 An offline summary is always `needs_review` / `NOT_REVIEWED`. A revised report
 is not described as accepted without another independent review. An interrupted
 or failed dependency chain is `incomplete`. The installation self-check does not
-make a paid provider call. Provider connectivity and scientific interpretation
-quality require a separate real-provider acceptance run.
+make a paid provider call. Verifying provider connectivity and interpretation
+requires a separate real-provider run.
 
 ## Workspace and result exploration
 
@@ -455,8 +453,7 @@ and **Read interpretation** lead to the current run. Local runs label the last
 action **Read numerical summary**; the fit action is disabled when observation
 and prediction files are absent. **View models & compare runs** also works before saving.
 Save it explicitly to retain history after closing the application. Saving through
-Ctrl+S or Saved Results refreshes this status too. A result from another Project
-cannot be saved into the current Project by a stale workflow button.
+Ctrl+S or Saved Results refreshes this status too.
 
 In the model viewer, **Linked sections & values** shows plan, east–elevation and
 north–elevation sections. Enter physical coordinates, use arrow keys to step
@@ -502,15 +499,12 @@ the inputs, objective and provider settings before pressing **Generate
 interpretation**. Preparing the task does not contact a provider or run anything.
 It works after a report failure as well as after a successful local run.
 
-Each completed stage updates `studio_checkpoint.json` atomically, recording its
-agent, outputs, outcome and error. When reusable model files exist, a local
-`continue_config.json` is also saved. After restarting Studio, choose an existing
-results task and add that file as the configuration to reuse the numerical models
-in a **new output folder**. Keep the referenced model and prior files in place.
-This reuses completed numerical work; it does not resume an interrupted optimizer
-iteration or skip unfinished interpretation/review. The selected geology mode
-still applies; new full-run labels are reused when they were successfully saved.
-These generated records remain local and are not part of the code contribution.
+When reusable model files exist, Studio saves `continue_config.json`. After
+restarting Studio, choose an existing-results task and add that file as the
+configuration to reuse the numerical models in a **new output folder**. Keep the
+referenced model and prior files in place. This reuses completed numerical work;
+it does not resume an interrupted optimizer iteration or skip unfinished
+interpretation or review.
 
 ### Approved temporary scripts
 
@@ -521,55 +515,30 @@ and show me the preview before running inversion." The host shows the purpose
 and Python code; **Run this script** approves execution. The assistant then
 rescans the returned file path through GeoSAGE's normal setup and preview.
 
-An AI-enabled automatic run can also recover a failed **Prepare data** step.
-It offers one format-conversion attempt for a selected gravity or magnetic
-table, using the host's script generator, restricted subprocess and approval
-card. A failed script may receive one corrected version, with fresh approval.
-GeoSAGE validates the replacement against the unchanged measurement columns,
-units, CRS, mesh and region. It shows counts and value ranges and asks **Use
-converted input** before adopting it. Structural validation cannot prove a
-conversion preserved the scientific meaning; review the preview and script.
-
-The original files remain unchanged. The run retains the scripts and their
-outputs under `scratch/`, fingerprints in `input_recovery.json`, and provenance
-in the import manifest and report's `run_record.json`. Converted inputs are
-staged within the same run. No new Project is created. This does not repair
-missing measurements, change magnetic-field or inversion parameters, rewrite
-meshes or restart a failed numerical optimizer. Report-only recovery is below.
-Offline runs, absent approval, declined conversions and hosts without this
-feature keep the failure visible instead of executing generated code.
+An AI-enabled automatic run can also offer a format-conversion script after a
+failed **Prepare data** step. Review the script and data preview before approval.
+The original files remain unchanged, and GeoSAGE asks before using the converted
+input. This feature does not repair missing measurements or change inversion
+parameters.
 
 ### Retry only the report
 
-Once figures and structured evidence are ready, Studio saves a small
-`report_handoff.json` and `retry_report_config.json`. Model arrays are referenced,
-not copied into the handoff. If drafting fails, the retry runs drafting and
-review; if review fails after a draft was saved, it runs review only. The
-existing continuation control selects this route after a report failure.
-The controller cannot select inversion or geological regrouping in this mode.
+If report generation fails after the numerical results are ready, use the
+continuation control to retry only the unfinished report or review step. The
+numerical inversion and geological grouping are not rerun.
 
 You can also ask GeoSAGE:
 
 > Retry the report from `D:\my-project\runs\run-01`. Keep its models and figures.
 
-The assistant calls `prepare_report_retry`, shows readiness and waits for your
-confirmation before the normal workflow start. After restarting, supply
-`retry_report_config.json` as the configuration of an AI interpretation task.
-The host saves the new report attempt within the current Project's normal run
-history; it does not create another Project. Existing reports remain untouched.
-An explicit report retry can also add AI interpretation to a completed local
-numerical summary. Provider credentials come from the current session.
+After restarting, supply `retry_report_config.json` as the configuration of an
+AI interpretation task. Existing reports remain untouched, and provider
+credentials come from the current session.
 
-The saved objective, parameters and evidence are reused exactly. Changing the
-scientific question or inputs requires a fresh interpretation instead. Hashes
-check the handoff, saved numerical models, figures and draft before reuse.
-Moved, missing or changed files require rebuilding the interpretation. Older
-runs without a handoff still support model reuse through `continue_config.json`;
-they do not gain report-only recovery retroactively. No optimizer state is
-restored, and interrupted numerical inversion is not resumed.
-
-After successful report recovery, `continue_config.json` starts a fresh
-interpretation with the new question. It does not retain the report-retry mode.
+The saved objective, parameters and evidence are reused. Changing the scientific
+question or inputs requires a fresh interpretation. Moved, missing or changed
+files must be restored before retrying. Report retry does not restore optimizer
+state or resume an interrupted inversion.
 
 Reports embed the standard available figures even when the AI response mentions
 only filenames. A declared but missing figure now fails explicitly. Drafts,
@@ -632,12 +601,6 @@ set of plotting implementations. Line surveys show station values instead of
 attempting an undefined 2D interpolation. Saved runs retain the figures produced
 at the time; inspect an archive again to create a run using the shared plots.
 
-The host retains one model-viewer OpenGL widget across artifact and Project
-changes, resetting project data in place. This avoids the Windows compositor
-failure observed after native folder dialogs. On Windows, confirm project and
-artifact switching once after installation because an offscreen check cannot
-detect compositor failures.
-
 ```bash
 geosage-studio --self-test
 ```
@@ -658,8 +621,3 @@ settings actually used by the solver. Deterministic repairs to an LLM grouping
 are disclosed in the result warnings. A review reporting major issues cannot
 mark the report accepted, and an empty provider response is a failure. Source
 integrity is `null` when the run stops before any source inventory is collected.
-
-This repository is code-only. Keep Project folders, input data, inversion
-results, generated VTK, figures, reports, credentials and private configs outside
-the repository. Screenshots used for local UI review are not part of the source
-contribution.

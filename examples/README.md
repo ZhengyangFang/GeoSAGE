@@ -4,6 +4,8 @@ Install GeoSAGE first with `python -m pip install -e .`.
 
 - `python examples/quick_test.py` checks package imports, configuration loading,
   and local data paths without starting an inversion.
+- `python examples/quick_test.py --require-data` also returns a nonzero status
+  when required local data paths are missing.
 - `python examples/validate_archived_results.py --data-root /path/to/workspace --output-dir /path/to/new/validation`
   validates existing Hannah/Iowa arrays, checks source-file integrity, and compares
   CSV rebuilds with the archived labels. No LLM calls are made.
@@ -15,4 +17,4 @@ The validator's `--data-root` explicitly selects the data workspace, independent
 of that environment variable. Validation output must be a new directory.
 
 All validation results and recovered mappings stay local. See
-[the path guide](../docs/paths.md) for migration and path precedence.
+[the path guide](../docs/paths.md) for workspace selection and path precedence.

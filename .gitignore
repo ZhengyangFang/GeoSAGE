@@ -93,10 +93,6 @@ mesh/
 *.pdf
 *.docx
 
-# Local manuscript products, metrics, and one-off notebooks deliberately excluded.
+# Local generated products
 Figure/
 Geology report/
-Hannah_model_metrics_table.csv
-1_2_language_driven_multi_agents_Hannah_auto_group.ipynb
-5_1build_pseudo_geology_from_csv.ipynb
-5_3_extract_Hannah_model_metrics.ipynb

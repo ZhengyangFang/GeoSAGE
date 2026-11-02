@@ -10,8 +10,7 @@ create an empty `.geosage-workspace` file in their parent directory. Notebooks
 and configuration files then resolve `data/` and `outputs/` from that parent,
 without changing working directories or copying data into the public checkout.
 An explicit `GEOSAGE_WORKSPACE` or config `project.workspace_dir` still takes
-precedence. Older experimental notebooks are separate archival material; use
-the maintained notebooks in this directory for the supported workflow.
+precedence. Use the notebooks in this directory for the supported workflow.
 
 | Notebook prefix | Purpose | Required local resources |
 | --- | --- | --- |

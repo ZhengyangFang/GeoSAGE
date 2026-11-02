@@ -59,40 +59,6 @@ workflows. Each multi-agent run writes an effective configuration, numerical and
 source manifests, an evidence bundle, and a redacted `agent_trace.json` so that the
 reasoning path can be inspected without exposing API credentials.
 
-## Repository And Data Policy
-
-This repository publishes **code only**, together with configuration templates,
-tests, dependency metadata, and documentation. Case-study inputs, computed models,
-reports, recovered mappings, figures, and validation outputs remain outside Git.
-Notebooks are distributed with execution outputs and attachments removed.
-
-Large files should not be committed to GitHub. The data archive contains `.zip`
-packages with the input data, generated models, figures, and representative outputs.
-Keep these downloaded folders untracked in Git.
-
-Current GitHub repository contents:
-
-| Path | Purpose |
-|---|---|
-| `src/geosage/gravity_mag_joint_inversion.py` | Joint gravity-magnetic inversion workflow. |
-| `src/geosage/geo_modeling_workflow.py` | Pseudo-geological model construction. |
-| `src/geosage/runner.py` | JSON-driven deterministic workflow runner. |
-| `src/geosage/multi_agent_runner.py` | Natural-language multi-agent workflow and report generation. |
-| `src/geosage/notebook_geo_helpers.py` | Shared helper functions used by plotting notebooks. |
-| Selected `*.ipynb` | Hannah/Iowa workflow examples plus reproducible plotting and quality-assessment notebooks. |
-| `pyproject.toml` | Python project metadata and dependencies. |
-| `LICENSE` | MIT license for original code. |
-
-Zenodo-only large data and output archives:
-
-| Path or pattern | Reason |
-|---|---|
-| `Hannah/`, `Iowa/` | Case-study input data, including large topography rasters. |
-| `*_Inversion_*/` | Inversion outputs, reports, meshes, intermediate models, and figures. |
-| `*.tif`, `*.npy`, `*.h5`, large `*.txt` | Too large or too generated for normal Git history. |
-| `iteration_model/` | Iteration snapshots from inversion runs. |
-| `reports/*.pdf` | Generated report artifacts. |
-
 ## Zenodo Input And Output Archive
 
 GitHub is the authoritative source for code and notebooks. The [Zenodo v1.0.3
@@ -121,10 +87,8 @@ SimPEG is restricted to the tested 0.25 API series until the optimization API is
 
 For exact inspection of previously saved results, use
 `geology.mode="reuse_existing_geology"` with `run.execution_mode="interpret_existing"`.
-This keeps the saved label arrays intact. Rebuilding from CSV is a separate operation:
-historical archives can use different topography masks or cleanup settings, so rebuilding
-must not be assumed to reproduce old labels. The current numerical algorithms and defaults
-are retained in this maintenance update.
+This keeps the saved label arrays intact. Rebuilding from CSV is a separate operation
+and may differ when topography masks or cleanup settings do not match the archive.
 
 If an archive lacks `geo_defs.json`, the loader can recover explicit numbered
 `Geo Group` definitions from its Markdown reports. It rejects conflicting names,
